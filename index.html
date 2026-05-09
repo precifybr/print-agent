@@ -67,7 +67,9 @@
         font-weight: 700;
       }
 
-      input {
+      input,
+      select,
+      textarea {
         width: 100%;
         min-height: 42px;
         border: 1px solid #cfd6e4;
@@ -78,9 +80,22 @@
         outline: none;
       }
 
-      input:focus {
+      textarea {
+        min-height: 86px;
+        resize: vertical;
+      }
+
+      input:focus,
+      select:focus,
+      textarea:focus {
         border-color: #2563eb;
         box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+      }
+
+      input[type="checkbox"] {
+        width: auto;
+        min-height: auto;
+        margin-right: 8px;
       }
 
       button {
@@ -231,6 +246,49 @@
         overflow-wrap: anywhere;
       }
 
+      .inline-form {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        gap: 8px;
+      }
+
+      .alias-row {
+        display: grid;
+        grid-template-columns: minmax(0, 0.85fr) minmax(0, 1fr) auto;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .alias-row button {
+        width: auto;
+        min-width: 42px;
+        margin-top: 0;
+        padding: 10px 12px;
+      }
+
+      .server-pill {
+        display: inline-block;
+        border: 1px solid #bbf7d0;
+        border-radius: 6px;
+        margin-top: 10px;
+        padding: 7px 9px;
+        background: #f0fdf4;
+        color: #067647;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      @media (max-width: 420px) {
+        .inline-form,
+        .alias-row {
+          grid-template-columns: 1fr;
+        }
+
+        .alias-row button {
+          width: 100%;
+        }
+      }
+
       .warning {
         color: #b54708;
       }
@@ -251,6 +309,78 @@
         <p id="loadingMessage" class="status" data-state="info" role="status" aria-live="polite">
           Carregando...
         </p>
+      </section>
+
+      <section id="localBridgeView" class="panel hidden">
+        <h1>Print Assistant</h1>
+        <p class="subtitle">Ponte local ativa para impressao direta pelo navegador.</p>
+
+        <div class="meta">
+          <p><strong>Servidor:</strong> <span id="localServerUrl" class="breakable">http://localhost:18181</span></p>
+          <p><strong>Status:</strong> <span id="localServerStatus">Inicializando</span></p>
+          <p><strong>Padrao Windows:</strong> <span id="localDefaultPrinter">-</span></p>
+          <p><strong>Ultima impressao:</strong> <span id="lastPrintStatus">-</span></p>
+          <p><strong>Ultimo erro:</strong> <span id="lastPrintError">-</span></p>
+          <p><strong>Versao:</strong> <span id="localAppVersion">-</span></p>
+        </div>
+        <span class="server-pill">LOCAL MODE</span>
+
+        <div class="field" style="margin-top: 16px;">
+          <label for="preferredPrinterSelect">Impressora preferida</label>
+          <select id="preferredPrinterSelect"></select>
+        </div>
+
+        <div class="field">
+          <label for="paperSizeSelect">Tamanho do papel</label>
+          <select id="paperSizeSelect">
+            <option value="58mm">58mm</option>
+            <option value="80mm">80mm</option>
+            <option value="A4">A4</option>
+          </select>
+        </div>
+
+        <div class="list">
+          <p class="list-title">Impressoras detectadas</p>
+          <div id="localBridgePrinterList"></div>
+        </div>
+
+        <div class="list">
+          <p class="list-title">Aliases de impressora</p>
+          <div id="aliasList"></div>
+          <div class="inline-form">
+            <input id="aliasNameInput" type="text" placeholder="BALCAO" />
+            <select id="aliasPrinterSelect"></select>
+          </div>
+          <button id="saveAliasButton" type="button">Salvar alias</button>
+        </div>
+
+        <div class="list">
+          <p class="list-title">Rotas locais</p>
+          <div class="inline-form">
+            <select id="kitchenPrinterSelect"></select>
+            <select id="balconyPrinterSelect"></select>
+          </div>
+          <button id="saveRoutesButton" type="button">Salvar rotas</button>
+        </div>
+
+        <div class="list">
+          <p class="list-title">Teste rapido</p>
+          <select id="testPrinterSelect"></select>
+          <textarea id="testTextInput">Pedido de teste - Print Assistant</textarea>
+          <button id="testPrintButton" type="button">Imprimir teste</button>
+        </div>
+
+        <div class="list">
+          <p class="list-title">Atualizacoes</p>
+          <label>
+            <input id="autoUpdateEnabledInput" type="checkbox" />
+            Verificar atualizacoes pelo GitHub Releases quando empacotado
+          </label>
+          <div id="updateStatus" class="list-item">Preparado, aguardando ativacao.</div>
+        </div>
+
+        <p id="localBridgeStatus" class="status" data-state="info" role="status" aria-live="polite"></p>
+        <button id="refreshLocalBridgeButton" class="secondary" type="button">Atualizar impressoras</button>
       </section>
 
       <section id="setupView" class="panel hidden">
@@ -337,6 +467,7 @@
 
     <script type="module">
       const SUPABASE_JS_MODULE_URL = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
+      const LOCAL_MODE_ENABLED = true;
       const CONFIG_STORAGE_KEY = "printAgentConfig.v2";
       const LEGACY_CONFIG_STORAGE_KEY = "printAgentConfig";
       const LEGACY_TOKEN_STORAGE_KEY = "token";
@@ -354,6 +485,7 @@
 
       const views = {
         loading: document.getElementById("loadingView"),
+        localBridge: document.getElementById("localBridgeView"),
         setup: document.getElementById("setupView"),
         login: document.getElementById("loginView"),
         connected: document.getElementById("connectedView"),
@@ -363,6 +495,29 @@
       const loadingMessage = document.getElementById("loadingMessage");
 
       const setupStatus = document.getElementById("setupStatus");
+      const localServerUrl = document.getElementById("localServerUrl");
+      const localServerStatus = document.getElementById("localServerStatus");
+      const localDefaultPrinter = document.getElementById("localDefaultPrinter");
+      const lastPrintStatus = document.getElementById("lastPrintStatus");
+      const lastPrintError = document.getElementById("lastPrintError");
+      const localAppVersion = document.getElementById("localAppVersion");
+      const preferredPrinterSelect = document.getElementById("preferredPrinterSelect");
+      const paperSizeSelect = document.getElementById("paperSizeSelect");
+      const localBridgePrinterList = document.getElementById("localBridgePrinterList");
+      const aliasList = document.getElementById("aliasList");
+      const aliasNameInput = document.getElementById("aliasNameInput");
+      const aliasPrinterSelect = document.getElementById("aliasPrinterSelect");
+      const saveAliasButton = document.getElementById("saveAliasButton");
+      const kitchenPrinterSelect = document.getElementById("kitchenPrinterSelect");
+      const balconyPrinterSelect = document.getElementById("balconyPrinterSelect");
+      const saveRoutesButton = document.getElementById("saveRoutesButton");
+      const testPrinterSelect = document.getElementById("testPrinterSelect");
+      const testTextInput = document.getElementById("testTextInput");
+      const testPrintButton = document.getElementById("testPrintButton");
+      const autoUpdateEnabledInput = document.getElementById("autoUpdateEnabledInput");
+      const updateStatus = document.getElementById("updateStatus");
+      const localBridgeStatus = document.getElementById("localBridgeStatus");
+      const refreshLocalBridgeButton = document.getElementById("refreshLocalBridgeButton");
       const configDropzone = document.getElementById("configDropzone");
       const configFileInput = document.getElementById("configFileInput");
       const importConfigButton = document.getElementById("importConfigButton");
@@ -401,6 +556,16 @@
         reconnectAttempts: 0,
         clientKey: "",
         localPrinters: [],
+        localBridgeSettings: {
+          aliases: {},
+          preferredPrinter: "",
+          paperSize: "80mm",
+          routes: {
+            kitchen: "",
+            balcony: "",
+          },
+          autoUpdateEnabled: false,
+        },
         lastPrinterSnapshot: "",
         lastSyncedPrinterSnapshot: "",
         queueProcessing: false,
@@ -1110,6 +1275,244 @@
         });
         refreshAppStatus();
         refreshLocalPrinters();
+      }
+
+      async function showLocalBridge(message = "Ponte local pronta") {
+        stopPolling();
+        stopHeartbeat();
+        clearReconnectTimer();
+        showView("localBridge");
+        setStatus(localBridgeStatus, message, "success");
+        await refreshLocalBridge();
+      }
+
+      async function refreshLocalBridge() {
+        if (!window.printAgent?.getLocalBridgeStatus) {
+          setStatus(localBridgeStatus, "API local indisponivel no Electron", "error");
+          return null;
+        }
+
+        try {
+          const status = await window.printAgent.getLocalBridgeStatus();
+          runtime.localPrinters = Array.isArray(status.printers) ? status.printers : [];
+          runtime.localBridgeSettings = status.settings || getDefaultLocalBridgeSettings();
+          localServerUrl.textContent = status.server?.url || "http://localhost:18181";
+          localServerStatus.textContent = status.server?.listening ? "Online" : "Inicializando";
+          localDefaultPrinter.textContent = status.defaultPrinter || "-";
+          lastPrintStatus.textContent = formatLastPrint(status.diagnostics?.lastPrint);
+          lastPrintError.textContent = status.diagnostics?.lastError?.message || "-";
+          localAppVersion.textContent = status.version || "-";
+          paperSizeSelect.value = runtime.localBridgeSettings.paperSize || "80mm";
+          autoUpdateEnabledInput.checked = Boolean(runtime.localBridgeSettings.autoUpdateEnabled);
+          updateStatus.textContent = formatUpdateStatus(status.diagnostics?.update);
+          renderLocalBridgePrinters();
+          renderAliasControls();
+          updateDiagnostics({
+            authStatus: "Local mode",
+            pollingStatus: "Desativado",
+            lastBackendError: "-",
+            connectedPrinterCount: String(runtime.localPrinters.length),
+            currentStore: "Local",
+          });
+          return status;
+        } catch {
+          runtime.localPrinters = [];
+          renderLocalBridgePrinters();
+          renderAliasControls();
+          setStatus(localBridgeStatus, "Falha ao atualizar ponte local", "error");
+          return null;
+        }
+      }
+
+      function getDefaultLocalBridgeSettings() {
+        return {
+          aliases: {},
+          preferredPrinter: "",
+          paperSize: "80mm",
+          routes: {
+            kitchen: "",
+            balcony: "",
+          },
+          autoUpdateEnabled: false,
+        };
+      }
+
+      function formatLastPrint(lastPrint) {
+        if (!lastPrint) {
+          return "-";
+        }
+
+        const printerName = lastPrint.printerName || lastPrint.printer || "-";
+        return `${lastPrint.status || "accepted"} - ${printerName}`;
+      }
+
+      function formatUpdateStatus(update) {
+        if (!update) {
+          return "Preparado, aguardando ativacao.";
+        }
+
+        if (!update.enabled) {
+          return "Preparado, desativado por configuracao.";
+        }
+
+        if (update.downloaded) {
+          return `Baixada versao ${update.version || "nova"}.`;
+        }
+
+        if (update.available) {
+          return `Disponivel versao ${update.version || "nova"}.`;
+        }
+
+        if (update.checking) {
+          return "Verificando atualizacoes...";
+        }
+
+        if (update.error) {
+          return `Erro: ${update.error}`;
+        }
+
+        return update.lastCheckedAt ? `Verificado em ${update.lastCheckedAt}` : "Preparado.";
+      }
+
+      function renderLocalBridgePrinters() {
+        if (!runtime.localPrinters.length) {
+          localBridgePrinterList.innerHTML = '<div class="list-item warning">Nenhuma impressora encontrada no Windows.</div>';
+          return;
+        }
+
+        localBridgePrinterList.innerHTML = runtime.localPrinters
+          .map((printer) => {
+            const status = printer.status === null || printer.status === undefined ? "" : `Status: ${escapeHtml(printer.status)}`;
+            const defaultLabel = printer.isDefault ? "Padrao Windows" : "Disponivel";
+
+            return `<div class="list-item">
+              <strong>${escapeHtml(printer.displayName || printer.name)}</strong>
+              ${escapeHtml(defaultLabel)}${status ? ` - ${status}` : ""}
+            </div>`;
+          })
+          .join("");
+      }
+
+      function renderAliasControls() {
+        const options = runtime.localPrinters
+          .map((printer) => `<option value="${escapeHtml(printer.name)}">${escapeHtml(printer.displayName || printer.name)}</option>`)
+          .join("");
+        const placeholder = '<option value="">Impressora padrao do Windows</option>';
+
+        preferredPrinterSelect.innerHTML = placeholder + options;
+        aliasPrinterSelect.innerHTML = placeholder + options;
+        testPrinterSelect.innerHTML = placeholder + options;
+        kitchenPrinterSelect.innerHTML = '<option value="">Cozinha sem rota fixa</option>' + options;
+        balconyPrinterSelect.innerHTML = '<option value="">Balcao sem rota fixa</option>' + options;
+        preferredPrinterSelect.value = runtime.localBridgeSettings.preferredPrinter || "";
+        kitchenPrinterSelect.value = runtime.localBridgeSettings.routes?.kitchen || "";
+        balconyPrinterSelect.value = runtime.localBridgeSettings.routes?.balcony || "";
+
+        const aliases = runtime.localBridgeSettings.aliases || {};
+        const aliasEntries = Object.entries(aliases);
+
+        if (!aliasEntries.length) {
+          aliasList.innerHTML = '<div class="list-item">Nenhum alias configurado.</div>';
+          return;
+        }
+
+        aliasList.innerHTML = aliasEntries
+          .map(([alias, printerName]) => `<div class="list-item alias-row">
+            <strong>${escapeHtml(alias)}</strong>
+            <span>${escapeHtml(printerName)}</span>
+            <button type="button" data-remove-alias="${escapeHtml(alias)}">Remover</button>
+          </div>`)
+          .join("");
+      }
+
+      async function saveLocalBridgeSettings(nextSettings) {
+        if (!window.printAgent?.updateLocalSettings) {
+          setStatus(localBridgeStatus, "API de configuracao indisponivel", "error");
+          return null;
+        }
+
+        const settings = await window.printAgent.updateLocalSettings(nextSettings);
+        runtime.localBridgeSettings = settings;
+        await refreshLocalBridge();
+        return settings;
+      }
+
+      async function saveAlias() {
+        const alias = aliasNameInput.value.trim();
+        const printerName = aliasPrinterSelect.value.trim();
+
+        if (!alias || !printerName) {
+          setStatus(localBridgeStatus, "Informe alias e impressora.", "error");
+          return;
+        }
+
+        const aliases = {
+          ...(runtime.localBridgeSettings.aliases || {}),
+          [alias]: printerName,
+        };
+
+        await saveLocalBridgeSettings({ aliases });
+        aliasNameInput.value = "";
+        setStatus(localBridgeStatus, `Alias ${alias} salvo.`, "success");
+      }
+
+      async function removeAlias(alias) {
+        const aliases = { ...(runtime.localBridgeSettings.aliases || {}) };
+        delete aliases[alias];
+        await saveLocalBridgeSettings({ aliases });
+        setStatus(localBridgeStatus, `Alias ${alias} removido.`, "success");
+      }
+
+      async function updatePaperSize() {
+        await saveLocalBridgeSettings({ paperSize: paperSizeSelect.value });
+        setStatus(localBridgeStatus, `Papel ${paperSizeSelect.value} selecionado.`, "success");
+      }
+
+      async function updatePreferredPrinter() {
+        await saveLocalBridgeSettings({ preferredPrinter: preferredPrinterSelect.value });
+        setStatus(localBridgeStatus, "Impressora preferida salva.", "success");
+      }
+
+      async function saveRoutes() {
+        await saveLocalBridgeSettings({
+          routes: {
+            kitchen: kitchenPrinterSelect.value,
+            balcony: balconyPrinterSelect.value,
+          },
+        });
+        setStatus(localBridgeStatus, "Rotas locais salvas.", "success");
+      }
+
+      async function updateAutoUpdateSetting() {
+        await saveLocalBridgeSettings({ autoUpdateEnabled: autoUpdateEnabledInput.checked });
+        setStatus(localBridgeStatus, "Preferencia de atualizacao salva.", "success");
+      }
+
+      async function testLocalPrint() {
+        if (!window.printAgent?.printLocal) {
+          setStatus(localBridgeStatus, "API de impressao local indisponivel", "error");
+          return;
+        }
+
+        testPrintButton.disabled = true;
+        setStatus(localBridgeStatus, "Enviando teste...", "info");
+
+        try {
+          const result = await window.printAgent.printLocal({
+            printer: testPrinterSelect.value,
+            text: testTextInput.value || "Pedido de teste - Print Assistant",
+            paperSize: paperSizeSelect.value,
+          });
+          lastPrintStatus.textContent = `accepted - ${result.printer}`;
+          lastPrintError.textContent = "-";
+          setStatus(localBridgeStatus, `Teste impresso em ${result.printer}`, "success");
+        } catch (error) {
+          lastPrintStatus.textContent = "failure";
+          lastPrintError.textContent = error.message || "PRINT_FAILED";
+          setStatus(localBridgeStatus, `Falha no teste: ${error.message || "PRINT_FAILED"}`, "error");
+        } finally {
+          testPrintButton.disabled = false;
+        }
       }
 
       function showPolling(message = "Polling") {
@@ -2794,6 +3197,12 @@
           onlineStatus: navigator.onLine ? "Online" : "Offline",
         });
 
+        if (LOCAL_MODE_ENABLED) {
+          writeFilesystemLog("app", "renderer_boot_local_mode", "info");
+          await showLocalBridge();
+          return;
+        }
+
         try {
           await loadSupabaseLibrary();
         } catch {
@@ -2851,6 +3260,21 @@
         });
         showLogin("Faca login para iniciar o Print Agent.", "info");
       }
+
+      refreshLocalBridgeButton.addEventListener("click", () => refreshLocalBridge());
+      saveAliasButton.addEventListener("click", saveAlias);
+      preferredPrinterSelect.addEventListener("change", updatePreferredPrinter);
+      paperSizeSelect.addEventListener("change", updatePaperSize);
+      saveRoutesButton.addEventListener("click", saveRoutes);
+      testPrintButton.addEventListener("click", testLocalPrint);
+      autoUpdateEnabledInput.addEventListener("change", updateAutoUpdateSetting);
+      aliasList.addEventListener("click", (event) => {
+        const alias = event.target?.dataset?.removeAlias;
+
+        if (alias) {
+          removeAlias(alias);
+        }
+      });
 
       importConfigButton.addEventListener("click", () => configFileInput.click());
       configFileInput.addEventListener("change", () => importConfigFile(configFileInput.files?.[0]));

@@ -1,7 +1,7 @@
 {
   "name": "print-agent",
   "version": "1.0.0",
-  "description": "Aplicativo desktop privado de impressao local para o ecossistema DALMAGO.",
+  "description": "Aplicativo desktop de ponte local para impressao via localhost.",
   "main": "main.js",
   "private": true,
   "scripts": {
@@ -19,7 +19,8 @@
     "electron-builder": "^26.8.1"
   },
   "dependencies": {
-    "electron-log": "^5.4.3"
+    "electron-log": "^5.4.3",
+    "electron-updater": "^6.8.3"
   },
   "build": {
     "appId": "br.com.dalmago.printagent",
@@ -30,6 +31,13 @@
       "buildResources": "build",
       "output": "dist"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "precifybr",
+        "repo": "print-agent"
+      }
+    ],
     "files": [
       "main.js",
       "preload.js",

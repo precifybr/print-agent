@@ -1,7 +1,11 @@
 const fs = require("node:fs");
+const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
+const { createHash, randomUUID } = require("node:crypto");
+const { spawn } = require("node:child_process");
 const log = require("electron-log/main");
+const { autoUpdater } = require("electron-updater");
 const {
   app,
   BrowserWindow,
@@ -18,8 +22,17 @@ const startupMode = process.argv.includes("--hidden") || process.argv.includes("
   : "normal";
 const LOG_MAX_SIZE_BYTES = 2 * 1024 * 1024;
 const LOG_ARCHIVE_COUNT = 3;
+const PRINT_TIMEOUT_MS = 30000;
 const LOG_LEVELS = new Set(["error", "warn", "info", "verbose", "debug", "silly"]);
 const LOG_CATEGORIES = new Set(["app", "print", "error"]);
+const LOCAL_BRIDGE_HOST = "127.0.0.1";
+const LOCAL_BRIDGE_PORT = 18181;
+const LOCAL_SETTINGS_FILE = "local-bridge-settings.json";
+const PAPER_SIZES = new Set(["58mm", "80mm", "A4"]);
+const LOCAL_PRINT_WORKER_FLAG = "--local-print-worker";
+const LOCAL_REQUEST_MAX_BYTES = 2 * 1024 * 1024;
+const DUPLICATE_PRINT_WINDOW_MS = 8000;
+const UPDATE_CHECK_ENABLED = process.env.PRINT_ASSISTANT_ENABLE_UPDATES === "1";
 
 let mainWindow;
 let tray;
@@ -29,8 +42,21 @@ const printWindows = new Set();
 let appLogger;
 let printLogger;
 let errorLogger;
+let localBridgeServer;
+let localBridgeListening = false;
+let cachedPrinters = [];
+let updateStatus = getDefaultUpdateStatus();
+const recentPrintRequests = new Map();
+const localBridgeStats = {
+  startedAt: new Date().toISOString(),
+  requestCount: 0,
+  lastRequest: null,
+  lastPrint: null,
+  lastError: null,
+};
+const isLocalPrintWorker = process.argv.includes(LOCAL_PRINT_WORKER_FLAG);
 
-const gotSingleInstanceLock = app.requestSingleInstanceLock();
+const gotSingleInstanceLock = isLocalPrintWorker || app.requestSingleInstanceLock();
 
 if (!gotSingleInstanceLock) {
   app.quit();
@@ -78,6 +104,89 @@ function getLogsDirectory() {
   const logsDirectory = path.join(app.getPath("userData"), "logs");
   fs.mkdirSync(logsDirectory, { recursive: true });
   return logsDirectory;
+}
+
+function getLocalSettingsPath() {
+  return path.join(app.getPath("userData"), LOCAL_SETTINGS_FILE);
+}
+
+function getLocalPrintJobsDirectory() {
+  const jobsDirectory = path.join(app.getPath("userData"), "local-print-jobs");
+  fs.mkdirSync(jobsDirectory, { recursive: true });
+  return jobsDirectory;
+}
+
+function getDefaultLocalSettings() {
+  return {
+    aliases: {},
+    preferredPrinter: "",
+    paperSize: "80mm",
+    routes: {
+      kitchen: "",
+      balcony: "",
+    },
+    autoUpdateEnabled: false,
+  };
+}
+
+function sanitizeLocalSettings(settings = {}) {
+  const aliases = settings.aliases && typeof settings.aliases === "object" && !Array.isArray(settings.aliases)
+    ? settings.aliases
+    : {};
+
+  const routes = settings.routes && typeof settings.routes === "object" && !Array.isArray(settings.routes)
+    ? settings.routes
+    : {};
+
+  return {
+    aliases: Object.entries(aliases).reduce((result, [alias, printerName]) => {
+      const safeAlias = String(alias || "").trim();
+      const safePrinterName = String(printerName || "").trim();
+
+      if (safeAlias && safePrinterName) {
+        result[safeAlias] = safePrinterName;
+      }
+
+      return result;
+    }, {}),
+    preferredPrinter: String(settings.preferredPrinter || "").trim(),
+    paperSize: PAPER_SIZES.has(settings.paperSize) ? settings.paperSize : "80mm",
+    routes: {
+      kitchen: String(routes.kitchen || "").trim(),
+      balcony: String(routes.balcony || "").trim(),
+    },
+    autoUpdateEnabled: Boolean(settings.autoUpdateEnabled),
+  };
+}
+
+function readLocalSettings() {
+  try {
+    const rawSettings = fs.readFileSync(getLocalSettingsPath(), "utf8");
+    return sanitizeLocalSettings({
+      ...getDefaultLocalSettings(),
+      ...JSON.parse(rawSettings),
+    });
+  } catch {
+    return getDefaultLocalSettings();
+  }
+}
+
+function writeLocalSettings(nextSettings = {}) {
+  const settings = sanitizeLocalSettings({
+    ...readLocalSettings(),
+    ...nextSettings,
+  });
+
+  fs.writeFileSync(getLocalSettingsPath(), `${JSON.stringify(settings, null, 2)}\n`, "utf8");
+  logApp("info", "local_settings_saved", {
+    aliasCount: Object.keys(settings.aliases).length,
+    hasPreferredPrinter: Boolean(settings.preferredPrinter),
+    paperSize: settings.paperSize,
+    hasKitchenRoute: Boolean(settings.routes.kitchen),
+    hasBalconyRoute: Boolean(settings.routes.balcony),
+    autoUpdateEnabled: settings.autoUpdateEnabled,
+  });
+  return settings;
 }
 
 function rotateLogFile(file) {
@@ -507,12 +616,140 @@ async function getPrinters() {
   try {
     const printers = await mainWindow.webContents.getPrintersAsync();
     const sanitizedPrinters = printers.map(sanitizePrinter);
+    cachedPrinters = sanitizedPrinters;
     logPrinterDiscovery(sanitizedPrinters);
     return sanitizedPrinters;
   } catch (error) {
     logError("printer_discovery_failed", { error });
     throw error;
   }
+}
+
+function getDefaultPrinter(printers = []) {
+  return printers.find((printer) => printer.isDefault) || printers[0] || null;
+}
+
+function normalizePrinterName(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/gi, " ")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
+function findPrinterByNormalizedName(printers, targetName, allowPartial = false) {
+  const normalizedTarget = normalizePrinterName(targetName);
+
+  if (!normalizedTarget) {
+    return null;
+  }
+
+  const exactPrinter = printers.find((printer) => normalizePrinterName(printer.name) === normalizedTarget);
+
+  if (exactPrinter || !allowPartial) {
+    return exactPrinter || null;
+  }
+
+  return printers.find((printer) => {
+    const printerName = normalizePrinterName(printer.name);
+    const displayName = normalizePrinterName(printer.displayName);
+    return printerName.includes(normalizedTarget) || normalizedTarget.includes(printerName) || displayName.includes(normalizedTarget);
+  }) || null;
+}
+
+async function resolveLocalPrinter(requestedPrinterName) {
+  const printers = cachedPrinters.length ? cachedPrinters : await getPrinters();
+  const settings = readLocalSettings();
+  const requestedName = String(requestedPrinterName || "").trim();
+  const normalizedTarget = normalizePrinterName(requestedName);
+
+  if (normalizedTarget) {
+    const exactPrinter = findPrinterByNormalizedName(printers, requestedName);
+
+    if (exactPrinter) {
+      logPrint("info", "printer_resolved", {
+        requestedPrinter: requestedName,
+        printerName: exactPrinter.name,
+        resolvedBy: "exact",
+      });
+      return {
+        printer: exactPrinter,
+        printers,
+        resolvedBy: "exact",
+      };
+    }
+
+    const aliasEntry = Object.entries(settings.aliases).find(([alias]) => normalizePrinterName(alias) === normalizedTarget);
+    const aliasTarget = aliasEntry ? aliasEntry[1] : "";
+    const aliasPrinter = findPrinterByNormalizedName(printers, aliasTarget, true);
+
+    if (aliasPrinter) {
+      logPrint("info", "printer_resolved", {
+        requestedPrinter: requestedName,
+        alias: aliasEntry?.[0] || "",
+        aliasTarget,
+        printerName: aliasPrinter.name,
+        resolvedBy: "alias",
+      });
+      return {
+        printer: aliasPrinter,
+        printers,
+        resolvedBy: "alias",
+      };
+    }
+
+    const partialPrinter = findPrinterByNormalizedName(printers, requestedName, true);
+
+    if (partialPrinter) {
+      logPrint("info", "printer_resolved", {
+        requestedPrinter: requestedName,
+        printerName: partialPrinter.name,
+        resolvedBy: "partial",
+      });
+      return {
+        printer: partialPrinter,
+        printers,
+        resolvedBy: "partial",
+      };
+    }
+  }
+
+  const preferredPrinter = findPrinterByNormalizedName(printers, settings.preferredPrinter, true);
+
+  if (preferredPrinter) {
+    logPrint("warn", "printer_resolved_preferred_fallback", {
+      requestedPrinter: requestedName,
+      preferredPrinter: settings.preferredPrinter,
+      printerName: preferredPrinter.name,
+    });
+    return {
+      printer: preferredPrinter,
+      printers,
+      resolvedBy: "preferred",
+    };
+  }
+
+  const defaultPrinter = getDefaultPrinter(printers);
+
+  if (defaultPrinter) {
+    logPrint("warn", "printer_resolved_default_fallback", {
+      requestedPrinter: requestedName,
+      printerName: defaultPrinter.name,
+    });
+    return {
+      printer: defaultPrinter,
+      printers,
+      resolvedBy: "default",
+    };
+  }
+
+  return {
+    printer: null,
+    printers,
+    resolvedBy: "missing",
+  };
 }
 
 function logPrinterDiscovery(printers) {
@@ -569,8 +806,9 @@ function buildFallbackHtml(job) {
 function buildPrintDocument(payload) {
   const job = payload.job || {};
   const html = payload.html || job.html || job.contentHtml || buildFallbackHtml(job);
-  const isThermal = String(payload.type || job.type || "").toLowerCase() === "thermal";
-  const paperWidth = Number(payload.paperWidth || job.paper_width || 80);
+  const paperSize = payload.paperSize || job.paper_size || "";
+  const isThermal = String(payload.type || job.type || "").toLowerCase() === "thermal" || ["58mm", "80mm"].includes(paperSize);
+  const paperWidth = Number(payload.paperWidth || job.paper_width || String(paperSize).replace("mm", "") || 80);
   const pageWidth = isThermal ? `${paperWidth}mm` : "210mm";
   const pageMargin = isThermal ? "3mm" : "12mm";
   const fontSize = isThermal ? "12px" : "14px";
@@ -612,9 +850,295 @@ function buildPrintDocument(payload) {
 </html>`;
 }
 
+function buildTextPrintHtml(text) {
+  return `<pre>${escapeHtml(text)}</pre>`;
+}
+
+async function printLocalPayload(payload = {}) {
+  const jobId = randomUUID();
+  const settings = readLocalSettings();
+  const requestedRoute = String(payload.route || "").trim().toLowerCase();
+  const routePrinter = requestedRoute && settings.routes[requestedRoute] ? settings.routes[requestedRoute] : "";
+  const requestedPrinter = payload.printer || payload.printerName || routePrinter || "";
+  const printSignature = getPrintRequestSignature(payload, requestedPrinter);
+
+  if (isDuplicatePrintRequest(printSignature)) {
+    logPrint("warn", "local_print_duplicate_rejected", {
+      jobId,
+      requestedPrinter,
+      route: requestedRoute,
+    });
+    throw createHttpError(409, "DUPLICATE_PRINT_REQUEST");
+  }
+
+  const { printer, resolvedBy } = await resolveLocalPrinter(requestedPrinter);
+  const paperSize = PAPER_SIZES.has(payload.paperSize) ? payload.paperSize : settings.paperSize;
+
+  if (!printer) {
+    logPrint("error", "local_print_no_printer_available", {
+      jobId,
+      requestedPrinter,
+    });
+    throw createHttpError(503, "NO_PRINTER_AVAILABLE");
+  }
+
+  if (!payload.html && typeof payload.text !== "string") {
+    throw createHttpError(400, "PRINT_CONTENT_MISSING");
+  }
+
+  rememberPrintRequest(printSignature);
+
+  const isThermal = ["58mm", "80mm"].includes(paperSize);
+  const html = payload.html || buildTextPrintHtml(payload.text);
+
+  logPrint("info", "local_print_dispatch", {
+    jobId,
+    requestedPrinter,
+    route: requestedRoute,
+    printerName: printer.name,
+    resolvedBy,
+    paperSize,
+    format: payload.html ? "html" : "text",
+  });
+
+  const printPayload = {
+    job: {
+      id: jobId,
+      type: isThermal ? "thermal" : "A4",
+    },
+    html,
+    printerName: printer.name,
+    type: isThermal ? "thermal" : "A4",
+    paperSize,
+    paperWidth: isThermal ? Number(paperSize.replace("mm", "")) : undefined,
+    copies: payload.copies,
+    silent: payload.silent !== false,
+  };
+
+  startIsolatedPrintJob(printPayload, {
+    jobId,
+    requestedPrinter,
+    route: requestedRoute,
+    printerName: printer.name,
+    resolvedBy,
+    paperSize,
+  });
+
+  localBridgeStats.lastPrint = {
+    jobId,
+    acceptedAt: new Date().toISOString(),
+    requestedPrinter,
+    route: requestedRoute,
+    printerName: printer.name,
+    resolvedBy,
+    paperSize,
+    status: "accepted",
+  };
+
+  return {
+    success: true,
+    accepted: true,
+    jobId,
+    printer: printer.name,
+    requestedPrinter,
+    resolvedBy,
+    paperSize,
+  };
+}
+
+function getPrintRequestSignature(payload, requestedPrinter) {
+  const content = JSON.stringify({
+    printer: requestedPrinter,
+    route: payload.route || "",
+    paperSize: payload.paperSize || "",
+    copies: payload.copies || 1,
+    html: payload.html || "",
+    text: payload.text || "",
+  });
+
+  return createHash("sha256").update(content).digest("hex");
+}
+
+function isDuplicatePrintRequest(signature) {
+  const now = Date.now();
+
+  for (const [key, timestamp] of recentPrintRequests.entries()) {
+    if (now - timestamp > DUPLICATE_PRINT_WINDOW_MS) {
+      recentPrintRequests.delete(key);
+    }
+  }
+
+  return recentPrintRequests.has(signature);
+}
+
+function rememberPrintRequest(signature) {
+  recentPrintRequests.set(signature, Date.now());
+}
+
+function startIsolatedPrintJob(printPayload, context = {}) {
+  runIsolatedPrintJob(printPayload)
+    .then(() => {
+      localBridgeStats.lastPrint = {
+        ...localBridgeStats.lastPrint,
+        ...context,
+        status: "success",
+        finishedAt: new Date().toISOString(),
+      };
+      logPrint("info", "local_print_worker_success", context);
+    })
+    .catch((error) => {
+      localBridgeStats.lastPrint = {
+        ...localBridgeStats.lastPrint,
+        ...context,
+        status: "failure",
+        finishedAt: new Date().toISOString(),
+        error: error.message || "PRINT_WORKER_FAILED",
+      };
+      localBridgeStats.lastError = {
+        at: new Date().toISOString(),
+        source: "print_worker",
+        message: error.message || "PRINT_WORKER_FAILED",
+      };
+      logPrint("error", "local_print_worker_failure", {
+        ...context,
+        error,
+      });
+    });
+}
+
+function getPrintWorkerArgs(jobPath) {
+  if (app.isPackaged) {
+    return [LOCAL_PRINT_WORKER_FLAG, jobPath];
+  }
+
+  return [app.getAppPath(), LOCAL_PRINT_WORKER_FLAG, jobPath];
+}
+
+function runIsolatedPrintJob(printPayload) {
+  return new Promise((resolve, reject) => {
+    const jobId = printPayload.job?.id || randomUUID();
+    const jobsDirectory = getLocalPrintJobsDirectory();
+    const jobPath = path.join(jobsDirectory, `${jobId}.json`);
+    const resultPath = path.join(jobsDirectory, `${jobId}.result.json`);
+    let settled = false;
+
+    fs.writeFileSync(jobPath, JSON.stringify({ payload: printPayload, resultPath }), "utf8");
+
+    const worker = spawn(process.execPath, getPrintWorkerArgs(jobPath), {
+      cwd: app.getAppPath(),
+      windowsHide: true,
+      stdio: "ignore",
+      detached: false,
+    });
+
+    const timeout = setTimeout(() => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      worker.kill();
+      cleanupPrintJobFiles(jobPath, resultPath);
+      reject(new Error("PRINT_TIMEOUT"));
+    }, PRINT_TIMEOUT_MS);
+
+    worker.on("error", (error) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      clearTimeout(timeout);
+      cleanupPrintJobFiles(jobPath, resultPath);
+      reject(error);
+    });
+
+    worker.on("exit", (code) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      clearTimeout(timeout);
+
+      try {
+        const result = JSON.parse(fs.readFileSync(resultPath, "utf8"));
+        cleanupPrintJobFiles(jobPath, resultPath);
+
+        if (code === 0 && result.success) {
+          resolve(result);
+          return;
+        }
+
+        reject(new Error(result.error || `PRINT_WORKER_EXIT_${code}`));
+      } catch (error) {
+        cleanupPrintJobFiles(jobPath, resultPath);
+        reject(error);
+      }
+    });
+  });
+}
+
+function cleanupPrintJobFiles(...filePaths) {
+  for (const filePath of filePaths) {
+    try {
+      fs.rmSync(filePath, { force: true });
+    } catch {
+      // Best-effort cleanup for transient local print job files.
+    }
+  }
+}
+
+async function runLocalPrintWorker() {
+  const flagIndex = process.argv.indexOf(LOCAL_PRINT_WORKER_FLAG);
+  const jobPath = process.argv[flagIndex + 1];
+
+  try {
+    if (!jobPath) {
+      throw new Error("PRINT_JOB_PATH_MISSING");
+    }
+
+    const job = JSON.parse(fs.readFileSync(jobPath, "utf8"));
+    await printHtml(job.payload || {});
+    fs.writeFileSync(job.resultPath, JSON.stringify({ success: true }), "utf8");
+    app.exit(0);
+  } catch (error) {
+    try {
+      const job = jobPath && fs.existsSync(jobPath) ? JSON.parse(fs.readFileSync(jobPath, "utf8")) : {};
+      if (job.resultPath) {
+        fs.writeFileSync(job.resultPath, JSON.stringify({
+          success: false,
+          error: error.message || "PRINT_WORKER_FAILED",
+        }), "utf8");
+      }
+    } catch {
+      // The parent process will translate a missing result into a controlled failure.
+    }
+
+    app.exit(1);
+  }
+}
+
 function printWebContents(webContents, options) {
   return new Promise((resolve, reject) => {
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      reject(new Error("PRINT_TIMEOUT"));
+    }, PRINT_TIMEOUT_MS);
+
     webContents.print(options, (success, failureReason) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      clearTimeout(timeout);
+
       if (success) {
         resolve({ success: true });
         return;
@@ -727,12 +1251,232 @@ function getPrintPayloadSummary(payload = {}, format) {
   };
 }
 
+function getCorsHeaders() {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Accept",
+    "Access-Control-Max-Age": "86400",
+    "Vary": "Origin",
+  };
+}
+
+function writeJsonResponse(response, statusCode, body) {
+  response.writeHead(statusCode, {
+    ...getCorsHeaders(),
+    "Content-Type": "application/json; charset=utf-8",
+  });
+  response.end(JSON.stringify(body));
+}
+
+function readRequestJson(request) {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    let rejected = false;
+
+    request.on("data", (chunk) => {
+      if (rejected) {
+        return;
+      }
+
+      body += chunk.toString("utf8");
+
+      if (Buffer.byteLength(body, "utf8") > LOCAL_REQUEST_MAX_BYTES) {
+        rejected = true;
+        reject(createHttpError(413, "PAYLOAD_TOO_LARGE"));
+        request.destroy();
+      }
+    });
+
+    request.on("end", () => {
+      if (!body.trim()) {
+        resolve({});
+        return;
+      }
+
+      try {
+        resolve(JSON.parse(body));
+      } catch {
+        reject(createHttpError(400, "INVALID_JSON"));
+      }
+    });
+
+    request.on("error", reject);
+  });
+}
+
+function createHttpError(statusCode, message) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+}
+
+function isLocalRequest(request) {
+  const address = request.socket?.remoteAddress || "";
+  return ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(address);
+}
+
+function recordLocalRequest(request, route, statusCode) {
+  localBridgeStats.requestCount += 1;
+  localBridgeStats.lastRequest = {
+    at: new Date().toISOString(),
+    method: request.method,
+    route,
+    statusCode,
+    origin: request.headers.origin || "",
+  };
+  logApp("info", "local_bridge_request", localBridgeStats.lastRequest);
+}
+
+async function getLocalBridgeStatus() {
+  const printers = await getPrinters();
+  const defaultPrinter = getDefaultPrinter(printers);
+  const settings = readLocalSettings();
+
+  return {
+    online: true,
+    mode: "local",
+    version: app.getVersion(),
+    server: {
+      host: "localhost",
+      port: LOCAL_BRIDGE_PORT,
+      url: `http://localhost:${LOCAL_BRIDGE_PORT}`,
+      listening: localBridgeListening,
+    },
+    defaultPrinter: defaultPrinter?.name || null,
+    printers,
+    settings,
+    diagnostics: {
+      ...localBridgeStats,
+      update: updateStatus,
+    },
+  };
+}
+
+async function handleLocalBridgeRequest(request, response) {
+  const url = new URL(request.url, `http://localhost:${LOCAL_BRIDGE_PORT}`);
+  const route = url.pathname;
+
+  if (!isLocalRequest(request)) {
+    recordLocalRequest(request, route, 403);
+    writeJsonResponse(response, 403, {
+      success: false,
+      error: "LOCALHOST_ONLY",
+    });
+    return;
+  }
+
+  if (request.method === "OPTIONS") {
+    recordLocalRequest(request, route, 204);
+    writeJsonResponse(response, 204, {});
+    return;
+  }
+
+  try {
+    if (request.method === "GET" && route === "/status") {
+      recordLocalRequest(request, route, 200);
+      writeJsonResponse(response, 200, await getLocalBridgeStatus());
+      return;
+    }
+
+    if (request.method === "GET" && route === "/printers") {
+      const status = await getLocalBridgeStatus();
+      recordLocalRequest(request, route, 200);
+      writeJsonResponse(response, 200, {
+        printers: status.printers,
+        defaultPrinter: status.defaultPrinter,
+        aliases: status.settings.aliases,
+        paperSize: status.settings.paperSize,
+        preferredPrinter: status.settings.preferredPrinter,
+        routes: status.settings.routes,
+      });
+      return;
+    }
+
+    if (request.method === "POST" && route === "/print") {
+      const payload = await readRequestJson(request);
+      const result = await printLocalPayload(payload);
+      recordLocalRequest(request, route, 200);
+      writeJsonResponse(response, 200, result);
+      return;
+    }
+
+    recordLocalRequest(request, route, 404);
+    writeJsonResponse(response, 404, {
+      success: false,
+      error: "NOT_FOUND",
+    });
+  } catch (error) {
+    logPrint("error", "local_bridge_request_failed", {
+      method: request.method,
+      path: route,
+      error,
+    });
+    localBridgeStats.lastError = {
+      at: new Date().toISOString(),
+      source: "http",
+      message: error.message || "LOCAL_BRIDGE_ERROR",
+    };
+    const statusCode = error.statusCode || 500;
+    recordLocalRequest(request, route, statusCode);
+    writeJsonResponse(response, statusCode, {
+      success: false,
+      error: error.message || "LOCAL_BRIDGE_ERROR",
+    });
+  }
+}
+
+function startLocalBridgeServer() {
+  if (localBridgeServer) {
+    return;
+  }
+
+  localBridgeServer = http.createServer((request, response) => {
+    handleLocalBridgeRequest(request, response);
+  });
+
+  localBridgeServer.on("error", (error) => {
+    localBridgeListening = false;
+    logError("local_bridge_server_error", { error, port: LOCAL_BRIDGE_PORT });
+  });
+
+  localBridgeServer.listen(LOCAL_BRIDGE_PORT, LOCAL_BRIDGE_HOST, () => {
+    localBridgeListening = true;
+    logApp("info", "local_bridge_server_started", {
+      host: LOCAL_BRIDGE_HOST,
+      port: LOCAL_BRIDGE_PORT,
+    });
+    getPrinters().catch((error) => {
+      logPrint("warn", "local_bridge_printer_cache_warm_failed", { error });
+    });
+  });
+}
+
+function stopLocalBridgeServer() {
+  if (!localBridgeServer) {
+    return;
+  }
+
+  localBridgeServer.close((error) => {
+    localBridgeListening = false;
+
+    if (error) {
+      logError("local_bridge_server_stop_failed", { error });
+      return;
+    }
+
+    logApp("info", "local_bridge_server_stopped");
+  });
+  localBridgeServer = null;
+}
+
 function cleanupBeforeQuit() {
   logApp("info", "app_shutdown_started", {
     activePrintWindows: printWindows.size,
   });
   isQuitting = true;
   sendRendererCommand("shutdown");
+  stopLocalBridgeServer();
 
   for (const printWindow of printWindows) {
     if (!printWindow.isDestroyed()) {
@@ -755,17 +1499,151 @@ function writeRendererLog(payload = {}) {
   return { success: true };
 }
 
+function getDefaultUpdateStatus() {
+  return {
+    prepared: true,
+    enabled: UPDATE_CHECK_ENABLED,
+    checking: false,
+    available: false,
+    downloaded: false,
+    version: "",
+    error: "",
+    lastCheckedAt: "",
+  };
+}
+
+function configureAutoUpdate() {
+  autoUpdater.logger = appLogger;
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = false;
+
+  autoUpdater.on("checking-for-update", () => {
+    updateStatus = {
+      ...updateStatus,
+      checking: true,
+      error: "",
+      lastCheckedAt: new Date().toISOString(),
+    };
+    logApp("info", "auto_update_checking");
+  });
+
+  autoUpdater.on("update-available", (info) => {
+    updateStatus = {
+      ...updateStatus,
+      checking: false,
+      available: true,
+      version: info?.version || "",
+    };
+    logApp("info", "auto_update_available", { version: info?.version || "" });
+
+    autoUpdater.downloadUpdate().catch((error) => {
+      updateStatus = {
+        ...updateStatus,
+        error: error.message || "AUTO_UPDATE_DOWNLOAD_FAILED",
+      };
+      logError("auto_update_download_failed", { error });
+    });
+  });
+
+  autoUpdater.on("update-not-available", () => {
+    updateStatus = {
+      ...updateStatus,
+      checking: false,
+      available: false,
+      downloaded: false,
+    };
+    logApp("info", "auto_update_not_available");
+  });
+
+  autoUpdater.on("update-downloaded", (info) => {
+    updateStatus = {
+      ...updateStatus,
+      checking: false,
+      available: true,
+      downloaded: true,
+      version: info?.version || updateStatus.version,
+    };
+    logApp("info", "auto_update_downloaded", { version: info?.version || "" });
+
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return;
+    }
+
+    dialog.showMessageBox(mainWindow, {
+      type: "info",
+      title: "Atualizacao disponivel",
+      message: "Uma nova versao do Print Assistant foi baixada.",
+      detail: "A instalacao so acontece se voce confirmar. O app nao sera reiniciado automaticamente.",
+      buttons: ["Instalar ao sair", "Depois"],
+      defaultId: 1,
+      cancelId: 1,
+    }).then(({ response }) => {
+      if (response === 0) {
+        logApp("info", "auto_update_install_on_quit_selected");
+        autoUpdater.autoInstallOnAppQuit = true;
+      }
+    }).catch((error) => {
+      logError("auto_update_prompt_failed", { error });
+    });
+  });
+
+  autoUpdater.on("error", (error) => {
+    updateStatus = {
+      ...updateStatus,
+      checking: false,
+      error: error.message || "AUTO_UPDATE_ERROR",
+    };
+    logError("auto_update_error", { error });
+  });
+}
+
+function maybeCheckForUpdates() {
+  const settings = readLocalSettings();
+  updateStatus = {
+    ...updateStatus,
+    enabled: Boolean(UPDATE_CHECK_ENABLED || settings.autoUpdateEnabled),
+  };
+
+  if (!app.isPackaged || !updateStatus.enabled) {
+    logApp("info", "auto_update_check_skipped", {
+      isPackaged: app.isPackaged,
+      enabled: updateStatus.enabled,
+    });
+    return;
+  }
+
+  autoUpdater.checkForUpdates().catch((error) => {
+    updateStatus = {
+      ...updateStatus,
+      checking: false,
+      error: error.message || "AUTO_UPDATE_CHECK_FAILED",
+    };
+    logError("auto_update_check_failed", { error });
+  });
+}
+
 ipcMain.handle("print-agent:get-printers", getPrinters);
 ipcMain.handle("print-agent:print-html", (_event, payload) => printHtml(payload || {}));
 ipcMain.handle("print-agent:print-pdf", (_event, payload) => printPdf(payload || {}));
+ipcMain.handle("print-agent:get-local-bridge-status", getLocalBridgeStatus);
+ipcMain.handle("print-agent:get-local-settings", readLocalSettings);
+ipcMain.handle("print-agent:update-local-settings", (_event, payload) => writeLocalSettings(payload || {}));
+ipcMain.handle("print-agent:print-local", (_event, payload) => printLocalPayload(payload || {}));
 ipcMain.handle("print-agent:get-app-status", getAppStatus);
 ipcMain.handle("print-agent:write-log", (_event, payload) => writeRendererLog(payload || {}));
 
 app.whenReady().then(() => {
+  if (isLocalPrintWorker) {
+    return runLocalPrintWorker();
+  }
+
   logApp("info", "app_ready", getAppStatus());
+  configureAutoUpdate();
   configureAutoStart();
   createTray();
   createWindow({ show: startupMode !== "hidden" });
+  startLocalBridgeServer();
+  maybeCheckForUpdates();
   logApp("info", "app_startup_complete", getAppStatus());
 }).catch((error) => {
   logError("app_ready_failed", { error });

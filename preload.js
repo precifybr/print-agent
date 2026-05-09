@@ -4,6 +4,10 @@ contextBridge.exposeInMainWorld("printAgent", {
   getPrinters: () => ipcRenderer.invoke("print-agent:get-printers"),
   printHtml: (payload) => ipcRenderer.invoke("print-agent:print-html", payload),
   printPdf: (payload) => ipcRenderer.invoke("print-agent:print-pdf", payload),
+  getLocalBridgeStatus: () => ipcRenderer.invoke("print-agent:get-local-bridge-status"),
+  getLocalSettings: () => ipcRenderer.invoke("print-agent:get-local-settings"),
+  updateLocalSettings: (payload) => ipcRenderer.invoke("print-agent:update-local-settings", payload),
+  printLocal: (payload) => ipcRenderer.invoke("print-agent:print-local", payload),
   getAppStatus: () => ipcRenderer.invoke("print-agent:get-app-status"),
   writeLog: (payload) => ipcRenderer.invoke("print-agent:write-log", payload),
   onLifecycleCommand: (callback) => {
