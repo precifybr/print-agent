@@ -1,6 +1,6 @@
 {
   "name": "print-agent",
-  "version": "1.0.0",
+  ""version": "1.0.1",
   "description": "Aplicativo desktop de ponte local para impressao via localhost.",
   "main": "main.js",
   "private": true,
