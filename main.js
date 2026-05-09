@@ -1,4 +1,5 @@
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const log = require("electron-log/main");
 const {
@@ -384,6 +385,7 @@ function getAppStatus() {
     trayVisible: Boolean(tray),
     windowVisible: Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()),
     autostartEnabled: Boolean(loginSettings.openAtLogin),
+    host: os.hostname(),
   };
 }
 

@@ -5,10 +5,16 @@ node_modules/
 dist/
 out/
 release/
+coverage/
+.cache/
+tmp/
+temp/
 
 # Runtime data and logs
 logs/
 *.log
+*.pid
+*.seed
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
@@ -18,6 +24,7 @@ pnpm-debug.log*
 .env
 .env.*
 !.env.example
+*.local
 
 # OS/editor files
 .DS_Store
@@ -36,3 +43,9 @@ builder-effective-config.yaml
 *.pem
 *.key
 *.crt
+
+# Windows app/runtime leftovers
+userdata/
+user-data/
+appdata/
+AppData/

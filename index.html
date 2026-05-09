@@ -342,6 +342,7 @@
       const LEGACY_TOKEN_STORAGE_KEY = "token";
       const DEFAULT_POLLING_INTERVAL_MS = 10000;
       const MIN_POLLING_INTERVAL_MS = 3000;
+      const HEARTBEAT_INTERVAL_MS = 45000;
       const MAX_RECONNECT_DELAY_MS = 60000;
       const PRINT_QUEUE_STORAGE_KEY = "printAgentQueue.v1";
       const PRINT_ACK_STORAGE_KEY = "printAgentAckQueue.v1";
@@ -349,6 +350,7 @@
       const MAX_PRINT_LOGS = 200;
       const MAX_QUEUE_ATTEMPTS_BEFORE_BACKOFF = 8;
       const CONFIG_IMPORT_EXTENSIONS = [".json", ".printconfig", ".pair"];
+      const VALID_PRINT_JOB_TYPES = new Set(["order", "teste", "reprint"]);
 
       const views = {
         loading: document.getElementById("loadingView"),
@@ -392,6 +394,7 @@
         supabase: null,
         authSubscription: null,
         pollingTimer: null,
+        heartbeatTimer: null,
         reconnectTimer: null,
         pollInFlight: false,
         bootstrapInFlight: false,
@@ -399,6 +402,7 @@
         clientKey: "",
         localPrinters: [],
         lastPrinterSnapshot: "",
+        lastSyncedPrinterSnapshot: "",
         queueProcessing: false,
         diagnostics: getDefaultDiagnostics(),
       };
@@ -486,6 +490,7 @@
           publishableKey: "",
           session: null,
           printAgentToken: "",
+          agentId: "",
           tokenVersion: null,
           printers: [],
           store: null,
@@ -536,6 +541,7 @@
         saveConfig({
           session: null,
           printAgentToken: "",
+          agentId: "",
           tokenVersion: null,
           printers: [],
           store: null,
@@ -550,6 +556,7 @@
           session: isSessionLike(config.session) ? config.session : null,
           printAgentToken:
             typeof config.printAgentToken === "string" ? config.printAgentToken.trim() : "",
+          agentId: typeof config.agentId === "string" ? config.agentId.trim() : "",
           tokenVersion: config.tokenVersion ?? null,
           printers: Array.isArray(config.printers) ? config.printers : [],
           store: isPlainObject(config.store) ? config.store : null,
@@ -1233,7 +1240,7 @@
 
         printerWarnings.classList.add("warning");
         printerWarnings.textContent = `Impressora nao encontrada: ${missingPrinters
-          .map((printer) => printer.printer_target || printer.name || printer.id)
+          .map((printer) => printer.printer_target || printer.printer_name || printer.name || printer.id)
           .join(", ")}`;
       }
 
@@ -1251,7 +1258,9 @@
       }
 
       function findLocalPrinter(backendPrinter) {
-        const target = normalizePrinterName(backendPrinter?.printer_target || backendPrinter?.name);
+        const target = normalizePrinterName(
+          backendPrinter?.printer_target || backendPrinter?.printer_name || backendPrinter?.name,
+        );
 
         if (!target) {
           return null;
@@ -1506,6 +1515,7 @@
         const printAgent = isPlainObject(payload.printAgent) ? payload.printAgent : {};
         const printAgentToken =
           getFirstString(printAgent.token, payload.printAgentToken, payload.print_agent_token, payload.token);
+        const agentId = getFirstString(printAgent.id, printAgent.agentId, printAgent.agent_id, payload.agentId, payload.agent_id);
         const tokenVersion =
           printAgent.tokenVersion ??
           printAgent.token_version ??
@@ -1531,6 +1541,7 @@
         const config = {
           store: payload.store,
           printAgentToken,
+          agentId,
           tokenVersion,
           printers: payload.printers,
           pollingInterval: normalizePollingInterval(pollingInterval),
@@ -1576,7 +1587,7 @@
 
         try {
           updateDiagnostics({
-            bootstrapRequestStatus: `GET ${endpoint}`,
+            bootstrapRequestStatus: `POST ${endpoint}`,
             bootstrapResponseStatus: "Aguardando resposta",
             accessTokenExists: Boolean(session?.access_token),
             jwtReceived: hasAuthorization,
@@ -1587,11 +1598,13 @@
             allowRefresh,
           });
           response = await fetchWithTimeout(endpoint, {
-            method: "GET",
+            method: "POST",
             headers: {
               Authorization: `Bearer ${session.access_token}`,
               Accept: "application/json",
+              "Content-Type": "application/json",
             },
+            body: JSON.stringify({ client: "electron-print-agent" }),
           });
         } catch (error) {
           const code = classifyFetchError(error);
@@ -1671,6 +1684,7 @@
           reconnecting: Boolean(options.reconnecting),
         });
         stopPolling();
+        stopHeartbeat();
 
         if (options.reconnecting) {
           showReconnecting("Reconectando...");
@@ -1699,6 +1713,8 @@
           saveConfig(bootstrapConfig);
           runtime.reconnectAttempts = 0;
           showConnected("Connected");
+          await syncPrintersWithBackend();
+          startHeartbeat();
           startPolling();
           writeFilesystemLog("app", "bootstrap_success", "info", {
             storeId: bootstrapConfig.store?.id || "",
@@ -1792,7 +1808,8 @@
       }
 
       async function agentRequest(path, options = {}) {
-        const { printAgentToken } = loadConfig();
+        const config = loadConfig();
+        const { printAgentToken } = config;
 
         if (!printAgentToken) {
           updateDiagnostics({
@@ -1800,6 +1817,16 @@
             lastBackendError: "AGENT_TOKEN_MISSING",
           });
           throw createOperationalError("AGENT_TOKEN_MISSING");
+        }
+
+        const session = await getValidSession();
+
+        if (!session || !hasUsableAccessToken(session)) {
+          updateDiagnostics({
+            pollingStatus: "Bloqueado sem JWT",
+            lastBackendError: "AGENT_SESSION_REQUIRED",
+          });
+          throw createOperationalError("AGENT_SESSION_REQUIRED");
         }
 
         const headers = new Headers(options.headers || {});
@@ -1912,6 +1939,16 @@
             endpoint: getSafeEndpoint("print-agent/pending?limit=10"),
             category: "app",
           });
+
+          if (hasTokenVersionChanged(payload)) {
+            writeFilesystemLog("app", "polling_token_version_changed", "warn", {
+              previousTokenVersion: loadConfig().tokenVersion ?? null,
+              nextTokenVersion: getPayloadTokenVersion(payload),
+            });
+            await recoverFromTokenRotation();
+            return;
+          }
+
           const pendingJobs = normalizePendingJobs(payload);
           await processAckQueue();
           await processPendingJobs(pendingJobs);
@@ -1957,6 +1994,161 @@
         }
 
         return [];
+      }
+
+      function getPayloadTokenVersion(payload) {
+        if (!payload || typeof payload !== "object") {
+          return null;
+        }
+
+        return payload.tokenVersion ?? payload.token_version ?? payload.printAgent?.tokenVersion ?? null;
+      }
+
+      function hasTokenVersionChanged(payload) {
+        const nextTokenVersion = getPayloadTokenVersion(payload);
+
+        if (nextTokenVersion === null || nextTokenVersion === undefined || nextTokenVersion === "") {
+          return false;
+        }
+
+        const currentTokenVersion = loadConfig().tokenVersion;
+
+        if (currentTokenVersion === null || currentTokenVersion === undefined || currentTokenVersion === "") {
+          return false;
+        }
+
+        return String(nextTokenVersion) !== String(currentTokenVersion);
+      }
+
+      async function getAgentHost() {
+        try {
+          const status = await window.printAgent?.getAppStatus?.();
+          return status?.host || navigator.userAgent;
+        } catch {
+          return navigator.userAgent;
+        }
+      }
+
+      function getPrinterDriver(printer) {
+        const options = printer?.options || {};
+        return (
+          printer?.driver ||
+          options["printer-make-and-model"] ||
+          options["device-uri"] ||
+          printer?.description ||
+          ""
+        );
+      }
+
+      async function buildPrinterRegistrationPayload() {
+        const config = loadConfig();
+        const host = await getAgentHost();
+        const printers = await refreshLocalPrinters();
+
+        return {
+          agent_id: config.agentId || "",
+          host,
+          tokenVersion: config.tokenVersion,
+          printers: printers.map((printer) => ({
+            agent_id: config.agentId || "",
+            host,
+            printer_name: printer.name,
+            display_name: printer.displayName || printer.name,
+            driver: getPrinterDriver(printer),
+            is_default: Boolean(printer.isDefault),
+            status: "online",
+          })),
+        };
+      }
+
+      async function syncPrintersWithBackend() {
+        const payload = await buildPrinterRegistrationPayload();
+        const snapshot = JSON.stringify(payload.printers.map((printer) => ({
+          name: printer.printer_name,
+          driver: printer.driver,
+          is_default: printer.is_default,
+        })).sort((a, b) => a.name.localeCompare(b.name)));
+
+        if (snapshot === runtime.lastSyncedPrinterSnapshot) {
+          writeFilesystemLog("print", "printer_backend_sync_skipped_unchanged", "debug", {
+            count: payload.printers.length,
+          });
+          return true;
+        }
+
+        writeFilesystemLog("print", "printer_backend_sync_start", "info", {
+          count: payload.printers.length,
+          hasAgentId: Boolean(payload.agent_id),
+        });
+
+        const response = await agentRequest("print-agent/printers", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          const errorPayload = await readErrorPayload(response);
+          writeFilesystemLog("print", "printer_backend_sync_failed", "warn", {
+            status: response.status,
+            ...errorPayload,
+          });
+          throw createOperationalError(classifyHttpStatus(response.status, "PRINTER_SYNC"), {
+            status: response.status,
+            ...errorPayload,
+          });
+        }
+
+        const syncResult = await readJsonSafely(response, {
+          endpoint: getSafeEndpoint("print-agent/printers"),
+          category: "print",
+        });
+
+        if (Array.isArray(syncResult.printers)) {
+          saveConfig({ printers: syncResult.printers });
+        }
+
+        runtime.lastSyncedPrinterSnapshot = snapshot;
+        updateDiagnostics({
+          connectedPrinterCount: `${payload.printers.length} local / ${Array.isArray(syncResult.printers) ? syncResult.printers.length : "?"} backend`,
+        });
+        writeFilesystemLog("print", "printer_backend_sync_success", "info", {
+          count: payload.printers.length,
+        });
+        return true;
+      }
+
+      async function sendHeartbeat() {
+        try {
+          const response = await agentRequest("print-agent/heartbeat", {
+            method: "POST",
+            body: JSON.stringify({
+              agent_id: loadConfig().agentId || "",
+              host: await getAgentHost(),
+              status: "online",
+              sentAt: new Date().toISOString(),
+            }),
+          });
+
+          if (!response.ok) {
+            const errorPayload = await readErrorPayload(response);
+            throw createOperationalError(classifyHttpStatus(response.status, "HEARTBEAT"), {
+              status: response.status,
+              ...errorPayload,
+            });
+          }
+
+          writeFilesystemLog("app", "heartbeat_success", "debug");
+        } catch (error) {
+          const code = getErrorCode(error);
+          writeFilesystemLog("app", "heartbeat_failure", "warn", {
+            code,
+            details: getErrorDetails(error),
+          });
+
+          if (code === "AGENT_TOKEN_EXPIRED") {
+            await recoverFromTokenRotation();
+          }
+        }
       }
 
       async function processPendingJobs(jobs) {
@@ -2029,12 +2221,26 @@
 
       async function processPrintJob(job, options = {}) {
         const jobId = getJobId(job);
+        const jobType = String(job.type || "").toLowerCase();
         const backendPrinter = findBackendPrinterForJob(job);
         writeFilesystemLog("print", "print_job_received", "info", {
           jobId,
           fromQueue: Boolean(options.fromQueue),
           type: job.type || job.format || "",
         });
+
+        if (!VALID_PRINT_JOB_TYPES.has(jobType)) {
+          writeFilesystemLog("print", "print_job_rejected_invalid_type", "warn", {
+            jobId,
+            type: job.type || "",
+          });
+
+          if (!options.fromQueue) {
+            await markJobError(jobId, `Invalid print job type: ${job.type || ""}`);
+          }
+
+          return;
+        }
 
         if (!backendPrinter) {
           enqueuePrintJob(job, "PRINTER_CONFIG_MISSING");
@@ -2216,12 +2422,14 @@
 
         if (code === "NETWORK_FAILURE" || code === "DNS_FAILURE" || code === "OFFLINE" || code === "NETWORK_TIMEOUT") {
           stopPolling();
+          stopHeartbeat();
           showReconnecting("Servidor nao encontrado. Tentando novamente...");
           scheduleReconnect();
           return;
         }
 
         stopPolling();
+        stopHeartbeat();
         showReconnecting("Reconectando...");
         scheduleReconnect();
       }
@@ -2229,13 +2437,27 @@
       async function recoverFromTokenRotation() {
         writeFilesystemLog("app", "token_rotation_recovery_start", "warn");
         stopPolling();
+        stopHeartbeat();
         showReconnecting("Atualizando credenciais...");
         await bootstrap({ reconnecting: true });
       }
 
       function startPolling() {
         stopPolling();
-        const { pollingInterval } = loadConfig();
+        const { pollingInterval, printAgentToken, session } = loadConfig();
+
+        if (!printAgentToken || !isSessionLike(session) || !hasUsableAccessToken(session)) {
+          updateDiagnostics({
+            pollingStatus: "Bloqueado sem bootstrap/auth",
+            lastBackendError: "POLLING_BLOCKED_UNAUTHENTICATED",
+          });
+          writeFilesystemLog("app", "polling_start_blocked_unauthenticated", "warn", {
+            hasPrintAgentToken: Boolean(printAgentToken),
+            hasSession: isSessionLike(session),
+            hasAccessToken: hasUsableAccessToken(session),
+          });
+          return;
+        }
 
         pollPendingJobs();
         runtime.pollingTimer = window.setInterval(pollPendingJobs, pollingInterval);
@@ -2249,6 +2471,23 @@
           runtime.pollingTimer = null;
           writeFilesystemLog("app", "polling_stopped", "info");
           updateDiagnostics({ pollingStatus: "Parado" });
+        }
+      }
+
+      function startHeartbeat() {
+        stopHeartbeat();
+        sendHeartbeat();
+        runtime.heartbeatTimer = window.setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
+        writeFilesystemLog("app", "heartbeat_started", "info", {
+          interval: HEARTBEAT_INTERVAL_MS,
+        });
+      }
+
+      function stopHeartbeat() {
+        if (runtime.heartbeatTimer) {
+          window.clearInterval(runtime.heartbeatTimer);
+          runtime.heartbeatTimer = null;
+          writeFilesystemLog("app", "heartbeat_stopped", "info");
         }
       }
 
@@ -2417,12 +2656,13 @@
         }
 
         getSupabaseClient();
-        showConnected(`Conectado a ${config.store?.name || "DALMAGO"}`);
-        startPolling();
 
         if (config.session) {
-          bootstrap({ reconnecting: true });
+          await bootstrap({ reconnecting: true });
+          return;
         }
+
+        showLogin("Configuracao importada. Faca login para iniciar o Print Agent.", "info");
       }
 
       async function login() {
@@ -2509,6 +2749,7 @@
 
       async function logout() {
         stopPolling();
+        stopHeartbeat();
         clearReconnectTimer();
         writeFilesystemLog("app", "logout_start", "info");
 
@@ -2537,6 +2778,7 @@
 
       function resetInstallation() {
         stopPolling();
+        stopHeartbeat();
         clearReconnectTimer();
         resetSupabaseClient();
         clearConfig();
@@ -2594,21 +2836,20 @@
         }
 
         getSupabaseClient();
-        showConnected(`Conectado a ${config.store?.name || "DALMAGO"}`);
-        startPolling();
 
         if (config.session) {
           await bootstrap({ reconnecting: true });
           return;
         }
 
-        writeFilesystemLog("app", "renderer_boot_started_from_imported_config", "info", {
+        writeFilesystemLog("app", "renderer_boot_waiting_for_auth", "info", {
           storeId: config.store?.id || "",
           storeName: config.store?.name || "",
           printerCount: config.printers.length,
           pollingInterval: config.pollingInterval,
           hasPrintAgentToken: Boolean(config.printAgentToken),
         });
+        showLogin("Faca login para iniciar o Print Agent.", "info");
       }
 
       importConfigButton.addEventListener("click", () => configFileInput.click());
