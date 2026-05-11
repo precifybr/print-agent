@@ -1622,6 +1622,50 @@ function maybeCheckForUpdates() {
   });
 }
 
+async function checkForUpdatesFromRenderer() {
+  updateStatus = {
+    ...updateStatus,
+    enabled: true,
+    checking: true,
+    error: "",
+    lastCheckedAt: new Date().toISOString(),
+  };
+
+  if (!app.isPackaged) {
+    updateStatus = {
+      ...updateStatus,
+      checking: false,
+      available: false,
+      downloaded: false,
+    };
+    logApp("info", "auto_update_renderer_check_skipped_dev");
+    return updateStatus;
+  }
+
+  try {
+    await autoUpdater.checkForUpdates();
+    return updateStatus;
+  } catch (error) {
+    updateStatus = {
+      ...updateStatus,
+      checking: false,
+      error: error.message || "AUTO_UPDATE_CHECK_FAILED",
+    };
+    logError("auto_update_renderer_check_failed", { error });
+    return updateStatus;
+  }
+}
+
+function installDownloadedUpdate() {
+  if (!updateStatus.downloaded) {
+    throw new Error("UPDATE_NOT_DOWNLOADED");
+  }
+
+  logApp("info", "auto_update_install_requested");
+  autoUpdater.quitAndInstall(false, true);
+  return { success: true };
+}
+
 ipcMain.handle("print-agent:get-printers", getPrinters);
 ipcMain.handle("print-agent:print-html", (_event, payload) => printHtml(payload || {}));
 ipcMain.handle("print-agent:print-pdf", (_event, payload) => printPdf(payload || {}));
@@ -1629,6 +1673,8 @@ ipcMain.handle("print-agent:get-local-bridge-status", getLocalBridgeStatus);
 ipcMain.handle("print-agent:get-local-settings", readLocalSettings);
 ipcMain.handle("print-agent:update-local-settings", (_event, payload) => writeLocalSettings(payload || {}));
 ipcMain.handle("print-agent:print-local", (_event, payload) => printLocalPayload(payload || {}));
+ipcMain.handle("print-agent:check-for-updates", checkForUpdatesFromRenderer);
+ipcMain.handle("print-agent:install-update", installDownloadedUpdate);
 ipcMain.handle("print-agent:get-app-status", getAppStatus);
 ipcMain.handle("print-agent:write-log", (_event, payload) => writeRendererLog(payload || {}));
 

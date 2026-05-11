@@ -1,6 +1,6 @@
 {
   "name": "print-agent",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Aplicativo desktop de ponte local para impressao via localhost.",
   "main": "main.js",
   "private": true,
@@ -8,6 +8,7 @@
     "start": "electron .",
     "pack": "electron-builder --dir",
     "dist:win": "electron-builder --win nsis",
+    "release:win": "electron-builder --win nsis --publish always",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -58,6 +59,7 @@
       "executableName": "Print Assistant"
     },
     "nsis": {
+      "artifactName": "PrintAssistantSetup.${ext}",
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "oneClick": false,

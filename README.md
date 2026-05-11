@@ -16,11 +16,11 @@ The local mode does not require Supabase auth, JWT, bootstrap, polling, remote q
 
 `GET /status`
 
-Returns app version, server state, default printer, detected printers, aliases, paper size, last print status, last error, and update status.
+Returns app version, server state, default printer, detected printers, settings, and update status.
 
 `GET /printers`
 
-Returns detected Windows printers, the default printer, alias mapping, preferred printer, local routes, and selected paper size.
+Returns detected Windows printers, the default printer, preferred printer, and selected paper size.
 
 `POST /print`
 
@@ -58,6 +58,18 @@ Printer resolution order:
 - default Windows printer fallback
 
 Paper size can be configured in the Electron UI as `58mm`, `80mm`, or `A4`.
+
+### Desktop app
+
+The desktop UI is intentionally minimal for store operators:
+
+- Online/offline status
+- Default printer selector
+- Paper size selector
+- Test print button
+- Discreet update check button
+
+Advanced details stay in local logs and the localhost API, not on the operator screen.
 
 ### Frontend handling
 
@@ -103,7 +115,19 @@ If `GET /status` fails, show the operator that Print Assistant is offline and as
 - Print payloads are capped at 2 MB.
 - Duplicate prints with the same content/printer within a short window are rejected.
 - Logs are written under the app user data directory and avoid storing full HTML content.
-- Auto-update is prepared with `electron-updater` and GitHub Releases provider `precifybr/print-agent`, but update checks are opt-in until production rollout.
+- Auto-update is prepared with `electron-updater` and GitHub Releases provider `precifybr/print-agent`.
+
+## Installer name
+
+Windows releases must always publish the installer as:
+
+`PrintAssistantSetup.exe`
+
+Permanent download URL:
+
+`https://github.com/precifybr/print-agent/releases/latest/download/PrintAssistantSetup.exe`
+
+The app version remains only in `package.json` and app metadata. Do not add the version to the installer file name.
 
 ## Repository contents
 
@@ -125,8 +149,9 @@ Commands:
 - `npm start`
 - `npm run pack`
 - `npm run dist:win`
+- `npm run release:win`
 
-The generated Windows installer is written to `dist/`.
+The generated Windows installer is written to `dist/PrintAssistantSetup.exe`.
 
 ## Distribution notes
 

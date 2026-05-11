@@ -3,15 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Print Agent</title>
+    <title>Print Assistant</title>
     <style>
       :root {
         color-scheme: light;
-        font-family:
-          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
-          "Segoe UI", sans-serif;
-        background: #f5f7fb;
-        color: #172033;
+        font-family: "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+        background: #f6f7f4;
+        color: #20231f;
       }
 
       * {
@@ -23,278 +21,216 @@
         margin: 0;
         display: grid;
         place-items: center;
-        padding: 24px;
+        padding: 28px;
+        background:
+          radial-gradient(circle at top left, rgba(215, 233, 205, 0.75), transparent 34%),
+          linear-gradient(145deg, #f8f8f4 0%, #eef2ea 100%);
       }
 
       main {
-        width: min(100%, 380px);
+        width: min(100%, 420px);
       }
 
-      .panel {
-        border: 1px solid #d9dfeb;
-        border-radius: 8px;
-        background: #fff;
-        padding: 22px;
-        box-shadow: 0 14px 34px rgba(22, 31, 51, 0.08);
+      .app {
+        border: 1px solid rgba(42, 51, 38, 0.08);
+        border-radius: 18px;
+        padding: 30px;
+        background: rgba(255, 255, 252, 0.94);
+        box-shadow: 0 24px 70px rgba(36, 43, 34, 0.13);
+      }
+
+      .header {
+        display: grid;
+        gap: 18px;
+        justify-items: center;
+        margin-bottom: 30px;
+        text-align: center;
+      }
+
+      .logo {
+        width: 54px;
+        height: 54px;
+        display: grid;
+        place-items: center;
+        border-radius: 16px;
+        background: #1f2a1e;
+        color: #fff;
+        font-size: 26px;
+        font-weight: 800;
       }
 
       h1 {
-        margin: 0 0 6px;
-        font-size: 24px;
+        margin: 0;
+        font-size: 25px;
+        font-weight: 750;
         letter-spacing: 0;
       }
 
-      p {
-        margin: 0;
+      .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        border-radius: 999px;
+        padding: 9px 14px;
+        background: #edf7ea;
+        color: #1f6d32;
+        font-size: 14px;
+        font-weight: 700;
       }
 
-      .subtitle {
-        margin-bottom: 22px;
-        color: #667085;
-        font-size: 14px;
-        line-height: 1.45;
+      .status[data-state="offline"] {
+        background: #fff0ed;
+        color: #b22b1f;
+      }
+
+      .status-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: currentColor;
+        box-shadow: 0 0 0 4px rgba(31, 109, 50, 0.12);
+      }
+
+      .status[data-state="offline"] .status-dot {
+        box-shadow: 0 0 0 4px rgba(178, 43, 31, 0.12);
+      }
+
+      .ready-text {
+        margin: 10px 0 0;
+        color: #6a7166;
+        font-size: 15px;
+      }
+
+      .form {
+        display: grid;
+        gap: 22px;
       }
 
       .field {
         display: grid;
-        gap: 7px;
-        margin-bottom: 14px;
+        gap: 9px;
       }
 
       label {
-        color: #344054;
-        font-size: 13px;
+        color: #3c4239;
+        font-size: 14px;
         font-weight: 700;
       }
 
-      input,
-      select,
-      textarea {
+      select {
         width: 100%;
-        min-height: 42px;
-        border: 1px solid #cfd6e4;
-        border-radius: 6px;
-        padding: 10px 11px;
-        color: #172033;
+        min-height: 48px;
+        border: 1px solid #d9ded3;
+        border-radius: 12px;
+        padding: 0 14px;
+        background: #fff;
+        color: #20231f;
         font: inherit;
         outline: none;
       }
 
-      textarea {
-        min-height: 86px;
-        resize: vertical;
+      select:focus {
+        border-color: #6b8f5d;
+        box-shadow: 0 0 0 4px rgba(107, 143, 93, 0.14);
       }
 
-      input:focus,
-      select:focus,
-      textarea:focus {
-        border-color: #2563eb;
-        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+      .paper-options {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
       }
 
-      input[type="checkbox"] {
-        width: auto;
-        min-height: auto;
-        margin-right: 8px;
+      .paper-option {
+        position: relative;
+      }
+
+      .paper-option input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      .paper-option span {
+        min-height: 44px;
+        display: grid;
+        place-items: center;
+        border: 1px solid #d9ded3;
+        border-radius: 12px;
+        background: #fff;
+        color: #3d4339;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 750;
+      }
+
+      .paper-option input:checked + span {
+        border-color: #243122;
+        background: #243122;
+        color: #fff;
       }
 
       button {
-        width: 100%;
-        min-height: 42px;
+        min-height: 48px;
         border: 0;
-        border-radius: 6px;
-        margin-top: 4px;
-        padding: 10px 14px;
-        background: #2563eb;
+        border-radius: 12px;
+        padding: 0 16px;
+        background: #243122;
         color: #fff;
         cursor: pointer;
         font: inherit;
-        font-weight: 700;
+        font-weight: 750;
       }
 
-      button.secondary {
-        border: 1px solid #cfd6e4;
-        margin-top: 10px;
-        background: #fff;
-        color: #344054;
+      button:hover {
+        background: #1b2419;
       }
 
       button:disabled {
-        cursor: not-allowed;
-        opacity: 0.68;
+        cursor: wait;
+        opacity: 0.62;
       }
 
-      .status {
+      .secondary {
+        border: 1px solid #d9ded3;
+        background: #fff;
+        color: #384035;
+      }
+
+      .secondary:hover {
+        background: #f5f7f1;
+      }
+
+      .update-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding-top: 6px;
+      }
+
+      .update-row button {
+        width: auto;
+        min-height: 38px;
+        padding: 0 12px;
+        border-radius: 10px;
+        font-size: 13px;
+      }
+
+      .message {
         min-height: 20px;
-        margin-top: 14px;
+        margin: 0;
+        color: #697066;
         font-size: 14px;
-        line-height: 1.4;
-      }
-
-      .status[data-state="success"] {
-        color: #067647;
-      }
-
-      .status[data-state="error"] {
-        color: #b42318;
-      }
-
-      .status[data-state="info"] {
-        color: #475467;
-      }
-
-      .meta {
-        display: grid;
-        gap: 8px;
-        margin: 14px 0 2px;
-        color: #475467;
-        font-size: 13px;
-        line-height: 1.45;
-      }
-
-      .meta strong {
-        color: #344054;
-      }
-
-      .list {
-        display: grid;
-        gap: 8px;
-        margin-top: 14px;
-      }
-
-      .list-title {
-        color: #344054;
-        font-size: 13px;
-        font-weight: 700;
-      }
-
-      .list-item {
-        border: 1px solid #e4e9f2;
-        border-radius: 6px;
-        padding: 9px 10px;
-        color: #475467;
-        font-size: 13px;
-        line-height: 1.4;
-      }
-
-      .list-item strong {
-        display: block;
-        color: #172033;
-      }
-
-      .import-dropzone {
-        border: 1px dashed #9aa7bd;
-        border-radius: 8px;
-        padding: 18px 14px;
-        background: #f8fafc;
-        color: #475467;
-        font-size: 13px;
         line-height: 1.45;
         text-align: center;
       }
 
-      .import-dropzone.is-dragging {
-        border-color: #2563eb;
-        background: #eff6ff;
+      .message[data-state="success"] {
+        color: #1f6d32;
       }
 
-      .import-dropzone input {
-        display: none;
-      }
-
-      .import-dropzone strong {
-        display: block;
-        margin-bottom: 4px;
-        color: #172033;
-      }
-
-      .import-summary {
-        margin-top: 14px;
-      }
-
-      .diagnostics {
-        margin-top: 14px;
-        padding: 14px;
-      }
-
-      .diagnostics h2 {
-        margin: 0 0 10px;
-        color: #344054;
-        font-size: 14px;
-        letter-spacing: 0;
-      }
-
-      .diagnostics-grid {
-        display: grid;
-        gap: 7px;
-        color: #475467;
-        font-size: 12px;
-        line-height: 1.35;
-      }
-
-      .diagnostics-row {
-        display: grid;
-        grid-template-columns: 120px minmax(0, 1fr);
-        gap: 8px;
-      }
-
-      .diagnostics-row strong {
-        color: #344054;
-      }
-
-      .diagnostics-row span {
-        overflow-wrap: anywhere;
-      }
-
-      .inline-form {
-        display: grid;
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-        gap: 8px;
-      }
-
-      .alias-row {
-        display: grid;
-        grid-template-columns: minmax(0, 0.85fr) minmax(0, 1fr) auto;
-        gap: 8px;
-        align-items: center;
-      }
-
-      .alias-row button {
-        width: auto;
-        min-width: 42px;
-        margin-top: 0;
-        padding: 10px 12px;
-      }
-
-      .server-pill {
-        display: inline-block;
-        border: 1px solid #bbf7d0;
-        border-radius: 6px;
-        margin-top: 10px;
-        padding: 7px 9px;
-        background: #f0fdf4;
-        color: #067647;
-        font-size: 13px;
-        font-weight: 700;
-      }
-
-      @media (max-width: 420px) {
-        .inline-form,
-        .alias-row {
-          grid-template-columns: 1fr;
-        }
-
-        .alias-row button {
-          width: 100%;
-        }
-      }
-
-      .warning {
-        color: #b54708;
-      }
-
-      .breakable {
-        overflow-wrap: anywhere;
+      .message[data-state="error"] {
+        color: #b22b1f;
       }
 
       .hidden {
@@ -304,1347 +240,230 @@
   </head>
   <body>
     <main>
-      <section id="loadingView" class="panel hidden">
-        <h1>Print Agent</h1>
-        <p id="loadingMessage" class="status" data-state="info" role="status" aria-live="polite">
-          Carregando...
-        </p>
-      </section>
-
-      <section id="localBridgeView" class="panel hidden">
-        <h1>Print Assistant</h1>
-        <p class="subtitle">Ponte local ativa para impressao direta pelo navegador.</p>
-
-        <div class="meta">
-          <p><strong>Servidor:</strong> <span id="localServerUrl" class="breakable">http://localhost:18181</span></p>
-          <p><strong>Status:</strong> <span id="localServerStatus">Inicializando</span></p>
-          <p><strong>Padrao Windows:</strong> <span id="localDefaultPrinter">-</span></p>
-          <p><strong>Ultima impressao:</strong> <span id="lastPrintStatus">-</span></p>
-          <p><strong>Ultimo erro:</strong> <span id="lastPrintError">-</span></p>
-          <p><strong>Versao:</strong> <span id="localAppVersion">-</span></p>
-        </div>
-        <span class="server-pill">LOCAL MODE</span>
-
-        <div class="field" style="margin-top: 16px;">
-          <label for="preferredPrinterSelect">Impressora preferida</label>
-          <select id="preferredPrinterSelect"></select>
-        </div>
-
-        <div class="field">
-          <label for="paperSizeSelect">Tamanho do papel</label>
-          <select id="paperSizeSelect">
-            <option value="58mm">58mm</option>
-            <option value="80mm">80mm</option>
-            <option value="A4">A4</option>
-          </select>
-        </div>
-
-        <div class="list">
-          <p class="list-title">Impressoras detectadas</p>
-          <div id="localBridgePrinterList"></div>
-        </div>
-
-        <div class="list">
-          <p class="list-title">Aliases de impressora</p>
-          <div id="aliasList"></div>
-          <div class="inline-form">
-            <input id="aliasNameInput" type="text" placeholder="BALCAO" />
-            <select id="aliasPrinterSelect"></select>
+      <section class="app" aria-labelledby="appTitle">
+        <div class="header">
+          <div class="logo" aria-hidden="true">P</div>
+          <div>
+            <h1 id="appTitle">Print Assistant</h1>
+            <p class="ready-text" id="readyText">Pronto para imprimir</p>
           </div>
-          <button id="saveAliasButton" type="button">Salvar alias</button>
-        </div>
-
-        <div class="list">
-          <p class="list-title">Rotas locais</p>
-          <div class="inline-form">
-            <select id="kitchenPrinterSelect"></select>
-            <select id="balconyPrinterSelect"></select>
+          <div class="status" id="assistantStatus" data-state="offline">
+            <span class="status-dot" aria-hidden="true"></span>
+            <span id="assistantStatusText">Offline</span>
           </div>
-          <button id="saveRoutesButton" type="button">Salvar rotas</button>
         </div>
 
-        <div class="list">
-          <p class="list-title">Teste rapido</p>
-          <select id="testPrinterSelect"></select>
-          <textarea id="testTextInput">Pedido de teste - Print Assistant</textarea>
+        <div class="form">
+          <div class="field">
+            <label for="printerSelect">Impressora padrao</label>
+            <select id="printerSelect">
+              <option value="">Procurando impressoras...</option>
+            </select>
+            <button class="secondary" id="refreshPrintersButton" type="button">Atualizar impressoras</button>
+          </div>
+
+          <div class="field">
+            <label>Tamanho do papel</label>
+            <div class="paper-options" role="radiogroup" aria-label="Tamanho do papel">
+              <label class="paper-option">
+                <input type="radio" name="paperSize" value="58mm" />
+                <span>58mm</span>
+              </label>
+              <label class="paper-option">
+                <input type="radio" name="paperSize" value="80mm" checked />
+                <span>80mm</span>
+              </label>
+              <label class="paper-option">
+                <input type="radio" name="paperSize" value="A4" />
+                <span>A4</span>
+              </label>
+            </div>
+          </div>
+
           <button id="testPrintButton" type="button">Imprimir teste</button>
-        </div>
 
-        <div class="list">
-          <p class="list-title">Atualizacoes</p>
-          <label>
-            <input id="autoUpdateEnabledInput" type="checkbox" />
-            Verificar atualizacoes pelo GitHub Releases quando empacotado
-          </label>
-          <div id="updateStatus" class="list-item">Preparado, aguardando ativacao.</div>
-        </div>
-
-        <p id="localBridgeStatus" class="status" data-state="info" role="status" aria-live="polite"></p>
-        <button id="refreshLocalBridgeButton" class="secondary" type="button">Atualizar impressoras</button>
-      </section>
-
-      <section id="setupView" class="panel hidden">
-        <h1>Print Agent</h1>
-        <p class="subtitle">Importe o arquivo de configuracao gerado no painel DALMAGO.</p>
-
-        <div id="configDropzone" class="import-dropzone" role="button" tabindex="0">
-          <strong>Importar arquivo de configuracao</strong>
-          Selecione ou arraste um arquivo .json, .printconfig ou .pair.
-          <input id="configFileInput" type="file" accept=".json,.printconfig,.pair,application/json" />
-        </div>
-
-        <button id="importConfigButton" type="button">Selecionar arquivo</button>
-        <div id="importSummary" class="meta import-summary hidden"></div>
-        <p id="setupStatus" class="status" data-state="info" role="status" aria-live="polite"></p>
-      </section>
-
-      <section id="loginView" class="panel hidden">
-        <h1>Print Agent</h1>
-        <p class="subtitle">Entre com o usuario autorizado da loja.</p>
-
-        <form id="loginForm" autocomplete="on">
-          <div class="field">
-            <label for="email">Email</label>
-            <input id="email" name="email" type="email" autocomplete="email" required />
+          <div class="update-row">
+            <button class="secondary" id="checkUpdateButton" type="button">Verificar atualizacao</button>
+            <button id="installUpdateButton" class="hidden" type="button">Atualizar agora</button>
           </div>
 
-          <div class="field">
-            <label for="password">Senha</label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              autocomplete="current-password"
-              required
-            />
-          </div>
-
-          <button id="loginButton" type="submit">Entrar</button>
-          <button id="changeServerButton" class="secondary" type="button">Importar outra configuracao</button>
-          <p id="loginStatus" class="status" data-state="info" role="status" aria-live="polite"></p>
-        </form>
-      </section>
-
-      <section id="connectedView" class="panel hidden">
-        <h1>Print Agent</h1>
-        <p class="subtitle">Conectado e aguardando trabalhos de impressao.</p>
-
-        <div class="meta">
-          <p><strong>Loja:</strong> <span id="storeName">-</span></p>
-          <p><strong>Servidor:</strong> <span id="serverName" class="breakable">-</span></p>
-          <p><strong>Impressoras:</strong> <span id="printerCount">0</span></p>
-          <p><strong>Versao:</strong> <span id="appVersion">-</span></p>
+          <p class="message" id="message" role="status" aria-live="polite"></p>
         </div>
-
-        <div class="list">
-          <p class="list-title">Impressoras do Windows</p>
-          <div id="localPrinterList"></div>
-        </div>
-
-        <div class="list">
-          <p class="list-title">Alertas</p>
-          <div id="printerWarnings" class="list-item">Nenhum alerta.</div>
-        </div>
-
-        <p id="connectedStatus" class="status" data-state="success" role="status" aria-live="polite">
-          Connected
-        </p>
-        <button id="disconnectButton" class="secondary" type="button">Sair</button>
-      </section>
-
-      <section id="errorView" class="panel hidden">
-        <h1>Print Agent</h1>
-        <p id="errorStatus" class="status" data-state="error" role="alert"></p>
-        <button id="retryButton" type="button">Tentar novamente</button>
-        <button id="resetButton" class="secondary" type="button">Reconfigurar</button>
-      </section>
-
-      <section id="diagnosticsPanel" class="panel diagnostics">
-        <h2>Diagnostico operacional</h2>
-        <div id="diagnosticsGrid" class="diagnostics-grid"></div>
       </section>
     </main>
 
     <script type="module">
-      const SUPABASE_JS_MODULE_URL = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm";
-      const LOCAL_MODE_ENABLED = true;
-      const CONFIG_STORAGE_KEY = "printAgentConfig.v2";
-      const LEGACY_CONFIG_STORAGE_KEY = "printAgentConfig";
-      const LEGACY_TOKEN_STORAGE_KEY = "token";
-      const DEFAULT_POLLING_INTERVAL_MS = 10000;
-      const MIN_POLLING_INTERVAL_MS = 3000;
-      const HEARTBEAT_INTERVAL_MS = 45000;
-      const MAX_RECONNECT_DELAY_MS = 60000;
-      const PRINT_QUEUE_STORAGE_KEY = "printAgentQueue.v1";
-      const PRINT_ACK_STORAGE_KEY = "printAgentAckQueue.v1";
-      const PRINT_LOG_STORAGE_KEY = "printAgentLogs.v1";
-      const MAX_PRINT_LOGS = 200;
-      const MAX_QUEUE_ATTEMPTS_BEFORE_BACKOFF = 8;
-      const CONFIG_IMPORT_EXTENSIONS = [".json", ".printconfig", ".pair"];
-      const VALID_PRINT_JOB_TYPES = new Set(["order", "teste", "reprint"]);
+      const DEFAULT_PAPER_SIZE = "80mm";
 
-      const views = {
-        loading: document.getElementById("loadingView"),
-        localBridge: document.getElementById("localBridgeView"),
-        setup: document.getElementById("setupView"),
-        login: document.getElementById("loginView"),
-        connected: document.getElementById("connectedView"),
-        error: document.getElementById("errorView"),
-      };
-
-      const loadingMessage = document.getElementById("loadingMessage");
-
-      const setupStatus = document.getElementById("setupStatus");
-      const localServerUrl = document.getElementById("localServerUrl");
-      const localServerStatus = document.getElementById("localServerStatus");
-      const localDefaultPrinter = document.getElementById("localDefaultPrinter");
-      const lastPrintStatus = document.getElementById("lastPrintStatus");
-      const lastPrintError = document.getElementById("lastPrintError");
-      const localAppVersion = document.getElementById("localAppVersion");
-      const preferredPrinterSelect = document.getElementById("preferredPrinterSelect");
-      const paperSizeSelect = document.getElementById("paperSizeSelect");
-      const localBridgePrinterList = document.getElementById("localBridgePrinterList");
-      const aliasList = document.getElementById("aliasList");
-      const aliasNameInput = document.getElementById("aliasNameInput");
-      const aliasPrinterSelect = document.getElementById("aliasPrinterSelect");
-      const saveAliasButton = document.getElementById("saveAliasButton");
-      const kitchenPrinterSelect = document.getElementById("kitchenPrinterSelect");
-      const balconyPrinterSelect = document.getElementById("balconyPrinterSelect");
-      const saveRoutesButton = document.getElementById("saveRoutesButton");
-      const testPrinterSelect = document.getElementById("testPrinterSelect");
-      const testTextInput = document.getElementById("testTextInput");
+      const assistantStatus = document.getElementById("assistantStatus");
+      const assistantStatusText = document.getElementById("assistantStatusText");
+      const readyText = document.getElementById("readyText");
+      const printerSelect = document.getElementById("printerSelect");
+      const refreshPrintersButton = document.getElementById("refreshPrintersButton");
       const testPrintButton = document.getElementById("testPrintButton");
-      const autoUpdateEnabledInput = document.getElementById("autoUpdateEnabledInput");
-      const updateStatus = document.getElementById("updateStatus");
-      const localBridgeStatus = document.getElementById("localBridgeStatus");
-      const refreshLocalBridgeButton = document.getElementById("refreshLocalBridgeButton");
-      const configDropzone = document.getElementById("configDropzone");
-      const configFileInput = document.getElementById("configFileInput");
-      const importConfigButton = document.getElementById("importConfigButton");
-      const importSummary = document.getElementById("importSummary");
+      const checkUpdateButton = document.getElementById("checkUpdateButton");
+      const installUpdateButton = document.getElementById("installUpdateButton");
+      const message = document.getElementById("message");
 
-      const loginForm = document.getElementById("loginForm");
-      const loginButton = document.getElementById("loginButton");
-      const loginStatus = document.getElementById("loginStatus");
-      const emailInput = document.getElementById("email");
-      const passwordInput = document.getElementById("password");
-      const changeServerButton = document.getElementById("changeServerButton");
-
-      const storeName = document.getElementById("storeName");
-      const serverName = document.getElementById("serverName");
-      const printerCount = document.getElementById("printerCount");
-      const appVersion = document.getElementById("appVersion");
-      const localPrinterList = document.getElementById("localPrinterList");
-      const printerWarnings = document.getElementById("printerWarnings");
-      const connectedStatus = document.getElementById("connectedStatus");
-      const disconnectButton = document.getElementById("disconnectButton");
-
-      const errorStatus = document.getElementById("errorStatus");
-      const retryButton = document.getElementById("retryButton");
-      const resetButton = document.getElementById("resetButton");
-      const diagnosticsGrid = document.getElementById("diagnosticsGrid");
-
-      const runtime = {
-        createClient: null,
-        supabase: null,
-        authSubscription: null,
-        pollingTimer: null,
-        heartbeatTimer: null,
-        reconnectTimer: null,
-        pollInFlight: false,
-        bootstrapInFlight: false,
-        reconnectAttempts: 0,
-        clientKey: "",
-        localPrinters: [],
-        localBridgeSettings: {
-          aliases: {},
+      const state = {
+        printers: [],
+        settings: {
           preferredPrinter: "",
-          paperSize: "80mm",
-          routes: {
-            kitchen: "",
-            balcony: "",
-          },
-          autoUpdateEnabled: false,
+          paperSize: DEFAULT_PAPER_SIZE,
         },
-        lastPrinterSnapshot: "",
-        lastSyncedPrinterSnapshot: "",
-        queueProcessing: false,
-        diagnostics: getDefaultDiagnostics(),
       };
 
-      const diagnosticsRows = [
-        ["supabaseUrl", "Supabase URL"],
-        ["authStatus", "Auth"],
-        ["sessionRestored", "Sessao restaurada"],
-        ["jwtReceived", "JWT recebido"],
-        ["accessTokenExists", "Access token"],
-        ["bootstrapRequestStatus", "Bootstrap request"],
-        ["bootstrapResponseStatus", "Bootstrap response"],
-        ["pollingStatus", "Polling"],
-        ["lastPollingResponse", "Ultimo polling"],
-        ["lastBackendError", "Ultimo erro backend"],
-        ["connectedPrinterCount", "Impressoras"],
-        ["currentStore", "Loja atual"],
-        ["tokenVersion", "Token version"],
-        ["onlineStatus", "Online"],
-      ];
-
-      // Architecture:
-      // - Supabase URL and publishable key are installed per client, not hardcoded.
-      // - Supabase Auth owns the user session.
-      // - agent-bootstrap exchanges the JWT for tenant-specific agent configuration.
-      // - Polling uses only the database-backed print-agent token returned by bootstrap.
-      function getDefaultDiagnostics() {
-        return {
-          supabaseUrl: "-",
-          authStatus: "Inicializando",
-          sessionRestored: "Nao",
-          jwtReceived: "Nao",
-          accessTokenExists: "Nao",
-          bootstrapRequestStatus: "-",
-          bootstrapResponseStatus: "-",
-          pollingStatus: "Parado",
-          lastPollingResponse: "-",
-          lastBackendError: "-",
-          connectedPrinterCount: "0",
-          currentStore: "-",
-          tokenVersion: "-",
-          onlineStatus: navigator.onLine ? "Online" : "Offline",
-        };
+      function setOnline(isOnline) {
+        assistantStatus.dataset.state = isOnline ? "online" : "offline";
+        assistantStatusText.textContent = isOnline ? "Online" : "Offline";
+        readyText.textContent = isOnline ? "Pronto para imprimir" : "Abra o Print Assistant novamente";
       }
 
-      function updateDiagnostics(nextDiagnostics = {}) {
-        runtime.diagnostics = {
-          ...runtime.diagnostics,
-          ...nextDiagnostics,
-          onlineStatus: navigator.onLine ? "Online" : "Offline",
-        };
-        renderDiagnostics();
+      function setMessage(text = "", status = "info") {
+        message.textContent = text;
+        message.dataset.state = status;
       }
 
-      function renderDiagnostics() {
-        diagnosticsGrid.innerHTML = diagnosticsRows
-          .map(([key, label]) => {
-            return `<div class="diagnostics-row">
-              <strong>${escapeHtml(label)}</strong>
-              <span>${escapeHtml(formatDiagnosticValue(runtime.diagnostics[key]))}</span>
-            </div>`;
-          })
-          .join("");
+      function getSelectedPaperSize() {
+        return document.querySelector('input[name="paperSize"]:checked')?.value || DEFAULT_PAPER_SIZE;
       }
 
-      function formatDiagnosticValue(value) {
-        if (value === true) {
-          return "Sim";
-        }
+      function setPaperSize(value) {
+        const paperSize = ["58mm", "80mm", "A4"].includes(value) ? value : DEFAULT_PAPER_SIZE;
+        const option = document.querySelector(`input[name="paperSize"][value="${paperSize}"]`);
 
-        if (value === false) {
-          return "Nao";
-        }
-
-        if (value === null || value === undefined || value === "") {
-          return "-";
-        }
-
-        return String(value);
-      }
-
-      function getDefaultConfig() {
-        return {
-          supabaseUrl: "",
-          publishableKey: "",
-          session: null,
-          printAgentToken: "",
-          agentId: "",
-          tokenVersion: null,
-          printers: [],
-          store: null,
-          pollingInterval: DEFAULT_POLLING_INTERVAL_MS,
-        };
-      }
-
-      function loadConfig() {
-        const config = getDefaultConfig();
-
-        try {
-          const rawConfig = localStorage.getItem(CONFIG_STORAGE_KEY);
-
-          if (rawConfig) {
-            return sanitizeConfig({ ...config, ...JSON.parse(rawConfig) });
-          }
-
-          const legacyRawConfig = localStorage.getItem(LEGACY_CONFIG_STORAGE_KEY);
-          const legacyConfig = legacyRawConfig ? JSON.parse(legacyRawConfig) : {};
-          const legacyToken = localStorage.getItem(LEGACY_TOKEN_STORAGE_KEY);
-
-          return sanitizeConfig({
-            ...config,
-            supabaseUrl: legacyConfig.apiOrigin || "",
-            printAgentToken: legacyConfig.token || legacyToken || "",
-          });
-        } catch {
-          return config;
+        if (option) {
+          option.checked = true;
         }
       }
 
-      function saveConfig(nextConfig = {}) {
-        const currentConfig = loadConfig();
-        const config = sanitizeConfig({ ...currentConfig, ...nextConfig });
-
-        localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(config));
-        localStorage.removeItem(LEGACY_TOKEN_STORAGE_KEY);
-        return config;
-      }
-
-      function clearConfig() {
-        localStorage.removeItem(CONFIG_STORAGE_KEY);
-        localStorage.removeItem(LEGACY_CONFIG_STORAGE_KEY);
-        localStorage.removeItem(LEGACY_TOKEN_STORAGE_KEY);
-      }
-
-      function clearSessionConfig() {
-        saveConfig({
-          session: null,
-          printAgentToken: "",
-          agentId: "",
-          tokenVersion: null,
-          printers: [],
-          store: null,
-          pollingInterval: DEFAULT_POLLING_INTERVAL_MS,
-        });
-      }
-
-      function sanitizeConfig(config) {
-        return {
-          supabaseUrl: normalizeSupabaseUrl(config.supabaseUrl),
-          publishableKey: typeof config.publishableKey === "string" ? config.publishableKey.trim() : "",
-          session: isSessionLike(config.session) ? config.session : null,
-          printAgentToken:
-            typeof config.printAgentToken === "string" ? config.printAgentToken.trim() : "",
-          agentId: typeof config.agentId === "string" ? config.agentId.trim() : "",
-          tokenVersion: config.tokenVersion ?? null,
-          printers: Array.isArray(config.printers) ? config.printers : [],
-          store: isPlainObject(config.store) ? config.store : null,
-          pollingInterval: normalizePollingInterval(config.pollingInterval),
-        };
-      }
-
-      function isPlainObject(value) {
-        return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-      }
-
-      function isSessionLike(session) {
-        return Boolean(
-          session &&
-            typeof session === "object" &&
-            typeof session.access_token === "string" &&
-            typeof session.refresh_token === "string",
-        );
-      }
-
-      function normalizeSupabaseUrl(value) {
-        return String(value || "").trim().replace(/\/+$/, "");
-      }
-
-      function normalizePollingInterval(value) {
-        const interval = Number(value);
-
-        if (!Number.isFinite(interval)) {
-          return DEFAULT_POLLING_INTERVAL_MS;
-        }
-
-        return Math.max(MIN_POLLING_INTERVAL_MS, interval);
-      }
-
-      function isValidSupabaseUrl(value) {
-        const supabaseUrl = normalizeSupabaseUrl(value);
-
-        try {
-          const url = new URL(supabaseUrl);
-          return url.protocol === "https:" && url.hostname.endsWith("supabase.co");
-        } catch {
-          return false;
-        }
-      }
-
-      function isValidPublishableKey(value) {
-        const key = String(value || "").trim();
-        return key.length >= 20 && !/\s/.test(key);
-      }
-
-      function isValidConfigExtension(fileName) {
-        const normalizedName = String(fileName || "").toLowerCase();
-        return CONFIG_IMPORT_EXTENSIONS.some((extension) => normalizedName.endsWith(extension));
-      }
-
-      function normalizeImportedConfig(rawConfig) {
-        if (!isPlainObject(rawConfig)) {
-          throw createOperationalError("CONFIG_NOT_OBJECT");
-        }
-
-        const project = typeof rawConfig.project === "string" ? rawConfig.project.trim() : "";
-        const supabaseUrl = normalizeSupabaseUrl(rawConfig.supabaseUrl || rawConfig.supabase_url);
-        const publishableKey =
-          typeof rawConfig.publishableKey === "string"
-            ? rawConfig.publishableKey.trim()
-            : typeof rawConfig.publishable_key === "string"
-              ? rawConfig.publishable_key.trim()
-              : "";
-        const printAgentToken = getFirstString(
-          rawConfig.printAgentToken,
-          rawConfig.print_agent_token,
-          rawConfig.token,
-          rawConfig.printAgent?.token,
-        );
-        const tokenVersion =
-          rawConfig.tokenVersion ?? rawConfig.token_version ?? rawConfig.printAgent?.tokenVersion ?? null;
-        const pollingInterval = normalizePollingInterval(
-          rawConfig.pollingInterval ?? rawConfig.polling_interval ?? rawConfig.printAgent?.pollingInterval,
-        );
-        const store = isPlainObject(rawConfig.store) ? rawConfig.store : null;
-        const printers = Array.isArray(rawConfig.printers) ? rawConfig.printers : [];
-
-        if (project && project.toUpperCase() !== "DALMAGO") {
-          throw createOperationalError("CONFIG_PROJECT_INVALID", { project });
-        }
-
-        if (!isValidSupabaseUrl(supabaseUrl)) {
-          throw createOperationalError("CONFIG_SUPABASE_URL_INVALID");
-        }
-
-        if (!isValidPublishableKey(publishableKey)) {
-          throw createOperationalError("CONFIG_PUBLISHABLE_KEY_INVALID");
-        }
-
-        if (!printAgentToken) {
-          throw createOperationalError("CONFIG_PRINT_AGENT_TOKEN_MISSING");
-        }
-
-        if (!store || !store.id || !store.name) {
-          throw createOperationalError("CONFIG_STORE_INVALID");
-        }
-
-        if (!Number.isFinite(Number(pollingInterval)) || pollingInterval < MIN_POLLING_INTERVAL_MS) {
-          throw createOperationalError("CONFIG_POLLING_INTERVAL_INVALID");
-        }
-
-        return sanitizeConfig({
-          ...getDefaultConfig(),
-          supabaseUrl,
-          publishableKey,
-          printAgentToken,
-          tokenVersion,
-          pollingInterval,
-          store,
-          printers,
-        });
-      }
-
-      function getConfigImportErrorMessage(error) {
-        const code = getErrorCode(error);
-
-        if (code === "CONFIG_FILE_EXTENSION_INVALID") {
-          return "Arquivo invalido. Use .json, .printconfig ou .pair.";
-        }
-
-        if (code === "CONFIG_JSON_INVALID") {
-          return "JSON invalido. Baixe novamente a configuracao no painel.";
-        }
-
-        if (code === "CONFIG_NOT_OBJECT") {
-          return "Arquivo de configuracao malformado.";
-        }
-
-        if (code === "CONFIG_PROJECT_INVALID") {
-          return "Configuracao nao pertence ao projeto DALMAGO.";
-        }
-
-        if (code === "CONFIG_SUPABASE_URL_INVALID") {
-          return "URL do servidor invalida no arquivo.";
-        }
-
-        if (code === "CONFIG_PUBLISHABLE_KEY_INVALID") {
-          return "Chave publica invalida no arquivo.";
-        }
-
-        if (code === "CONFIG_PRINT_AGENT_TOKEN_MISSING") {
-          return "Token do Print Agent ausente no arquivo.";
-        }
-
-        if (code === "CONFIG_STORE_INVALID") {
-          return "Dados da loja ausentes ou invalidos.";
-        }
-
-        if (code === "CONFIG_POLLING_INTERVAL_INVALID") {
-          return "Intervalo de polling invalido.";
-        }
-
-        return "Nao foi possivel importar a configuracao.";
-      }
-
-      function getApiOrigin() {
-        return loadConfig().supabaseUrl;
-      }
-
-      function getFunctionUrl(path) {
-        const supabaseUrl = getApiOrigin();
-
-        if (!isValidSupabaseUrl(supabaseUrl)) {
-          throw new Error("INVALID_URL");
-        }
-
-        return `${supabaseUrl}/functions/v1/${String(path).replace(/^\/+/, "")}`;
-      }
-
-      function loadPrintQueue() {
-        try {
-          const queue = JSON.parse(localStorage.getItem(PRINT_QUEUE_STORAGE_KEY) || "[]");
-          return Array.isArray(queue) ? queue : [];
-        } catch {
-          return [];
-        }
-      }
-
-      function savePrintQueue(queue) {
-        localStorage.setItem(PRINT_QUEUE_STORAGE_KEY, JSON.stringify(queue));
-      }
-
-      function enqueuePrintJob(job, reason) {
-        const queue = loadPrintQueue();
-        const jobId = getJobId(job);
-        const existingIndex = queue.findIndex((queuedJob) => queuedJob.id === jobId);
-        const queuedJob = {
-          id: jobId,
-          job,
-          reason,
-          attempts: existingIndex >= 0 ? queue[existingIndex].attempts + 1 : 0,
-          queuedAt: existingIndex >= 0 ? queue[existingIndex].queuedAt : new Date().toISOString(),
-          lastAttemptAt: new Date().toISOString(),
-        };
-
-        if (existingIndex >= 0) {
-          queue[existingIndex] = queuedJob;
-        } else {
-          queue.push(queuedJob);
-        }
-
-        savePrintQueue(queue);
-        writePrintLog("queued", `Job ${jobId} enfileirado: ${reason}`);
-      }
-
-      function removeQueuedPrintJob(jobId) {
-        savePrintQueue(loadPrintQueue().filter((queuedJob) => queuedJob.id !== jobId));
-      }
-
-      function loadAckQueue() {
-        try {
-          const queue = JSON.parse(localStorage.getItem(PRINT_ACK_STORAGE_KEY) || "[]");
-          return Array.isArray(queue) ? queue : [];
-        } catch {
-          return [];
-        }
-      }
-
-      function saveAckQueue(queue) {
-        localStorage.setItem(PRINT_ACK_STORAGE_KEY, JSON.stringify(queue));
-      }
-
-      function enqueueAck(jobId) {
-        const queue = loadAckQueue();
-
-        if (!queue.some((item) => item.id === jobId)) {
-          queue.push({ id: jobId, printedAt: new Date().toISOString() });
-          saveAckQueue(queue);
-        }
-      }
-
-      function removeAck(jobId) {
-        saveAckQueue(loadAckQueue().filter((item) => item.id !== jobId));
-      }
-
-      function isAckPending(jobId) {
-        return loadAckQueue().some((item) => item.id === jobId);
-      }
-
-      function writePrintLog(level, message, details = {}) {
-        const logs = loadPrintLogs();
-        logs.unshift({
-          level,
-          message,
-          details,
-          createdAt: new Date().toISOString(),
-        });
-        localStorage.setItem(PRINT_LOG_STORAGE_KEY, JSON.stringify(logs.slice(0, MAX_PRINT_LOGS)));
-        writeFilesystemLog("print", `print_${level}`, getFilesystemLogLevel(level), {
-          message,
-          details,
-        });
-      }
-
-      function loadPrintLogs() {
-        try {
-          const logs = JSON.parse(localStorage.getItem(PRINT_LOG_STORAGE_KEY) || "[]");
-          return Array.isArray(logs) ? logs : [];
-        } catch {
-          return [];
-        }
-      }
-
-      function writeFilesystemLog(category, event, level = "info", details = {}) {
-        if (!window.printAgent?.writeLog) {
+      function renderPrinters() {
+        if (!state.printers.length) {
+          printerSelect.innerHTML = '<option value="">Nenhuma impressora encontrada</option>';
+          printerSelect.disabled = true;
+          testPrintButton.disabled = true;
           return;
         }
 
-        window.printAgent.writeLog({
-          category,
-          event,
-          level,
-          details: sanitizeLogDetails(details),
-        }).catch(() => {
-          // Filesystem diagnostics must never break printing or polling.
-        });
+        printerSelect.disabled = false;
+        testPrintButton.disabled = false;
+        printerSelect.innerHTML = state.printers
+          .map((printer) => {
+            const name = escapeHtml(printer.name);
+            const label = escapeHtml(printer.displayName || printer.name);
+            return `<option value="${name}">${label}</option>`;
+          })
+          .join("");
+
+        const preferredPrinter = state.settings.preferredPrinter;
+        const defaultPrinter = state.printers.find((printer) => printer.isDefault);
+        const selectedPrinter = state.printers.find((printer) => printer.name === preferredPrinter)
+          || (state.printers.length === 1 ? state.printers[0] : defaultPrinter)
+          || state.printers[0];
+
+        printerSelect.value = selectedPrinter.name;
+        saveSettings({ preferredPrinter: selectedPrinter.name });
       }
 
-      function sanitizeLogDetails(value, depth = 0) {
-        if (value instanceof Error) {
-          return {
-            name: value.name,
-            message: value.message,
-            stack: value.stack,
-          };
-        }
-
-        if (value === null || value === undefined) {
-          return value;
-        }
-
-        if (typeof value === "string") {
-          return value.length > 500 ? `${value.slice(0, 500)}...` : value;
-        }
-
-        if (typeof value === "number" || typeof value === "boolean") {
-          return value;
-        }
-
-        if (Array.isArray(value)) {
-          if (depth >= 3) {
-            return `[array:${value.length}]`;
-          }
-
-          return value.slice(0, 25).map((item) => sanitizeLogDetails(item, depth + 1));
-        }
-
-        if (typeof value === "object") {
-          if (depth >= 3) {
-            return "[object]";
-          }
-
-          return Object.entries(value).reduce((result, [key, entryValue]) => {
-            const normalizedKey = key.toLowerCase();
-
-            if (
-              normalizedKey.includes("token") ||
-              normalizedKey.includes("secret") ||
-              normalizedKey.includes("password") ||
-              normalizedKey.includes("authorization") ||
-              normalizedKey.includes("publishable")
-            ) {
-              result[key] = "[redacted]";
-              return result;
-            }
-
-            if (normalizedKey.includes("html") || normalizedKey === "content") {
-              result[key] = "[omitted]";
-              return result;
-            }
-
-            result[key] = sanitizeLogDetails(entryValue, depth + 1);
-            return result;
-          }, {});
-        }
-
-        return String(value);
-      }
-
-      function getFilesystemLogLevel(level) {
-        if (level === "error") {
-          return "error";
-        }
-
-        if (level === "queued" || level === "retry") {
-          return "warn";
-        }
-
-        return "info";
-      }
-
-      function createOperationalError(code, details = {}) {
-        const error = new Error(code);
-        error.code = code;
-        error.details = details;
-        return error;
-      }
-
-      function getErrorCode(error) {
-        return error?.code || error?.message || "UNKNOWN_ERROR";
-      }
-
-      function getErrorDetails(error) {
-        return error?.details && typeof error.details === "object" ? error.details : {};
-      }
-
-      function getErrorDiagnostic(error) {
-        const code = getErrorCode(error);
-        const details = getErrorDetails(error);
-        const status = details.status ? ` HTTP ${details.status}` : "";
-        const body = details.backendMessage ? `: ${details.backendMessage}` : "";
-        return `${code}${status}${body}`;
-      }
-
-      function safeBodyPreview(value) {
-        if (!value) {
-          return "";
-        }
-
-        return String(value).replace(/\s+/g, " ").trim().slice(0, 600);
-      }
-
-      function getSafeEndpoint(path) {
-        try {
-          return getFunctionUrl(path);
-        } catch {
-          return String(path || "");
-        }
-      }
-
-      function classifyFetchError(error) {
-        const message = String(error?.message || "");
-        const lowerMessage = message.toLowerCase();
-
-        if (error?.name === "AbortError" || lowerMessage.includes("aborted") || lowerMessage.includes("timeout")) {
-          return "NETWORK_TIMEOUT";
-        }
-
-        if (!navigator.onLine) {
-          return "OFFLINE";
-        }
-
-        if (lowerMessage.includes("certificate") || lowerMessage.includes("ssl") || lowerMessage.includes("cert")) {
-          return "INVALID_SSL";
-        }
-
-        if (lowerMessage.includes("dns") || lowerMessage.includes("name_not_resolved")) {
-          return "DNS_FAILURE";
-        }
-
-        return "NETWORK_FAILURE";
-      }
-
-      function classifyHttpStatus(status, prefix) {
-        if (status === 401) {
-          return `${prefix}_UNAUTHORIZED`;
-        }
-
-        if (status === 403) {
-          return `${prefix}_FORBIDDEN`;
-        }
-
-        if (status === 404) {
-          return `${prefix}_NOT_FOUND`;
-        }
-
-        if (status >= 500) {
-          return `${prefix}_BACKEND_ERROR`;
-        }
-
-        return `${prefix}_FAILED`;
-      }
-
-      async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
-        const controller = new AbortController();
-        const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
-
-        try {
-          return await fetch(url, {
-            ...options,
-            signal: controller.signal,
-          });
-        } finally {
-          window.clearTimeout(timeout);
-        }
-      }
-
-      async function readErrorPayload(response) {
-        const text = await response.text();
-
-        if (!text) {
-          return {
-            raw: "",
-            parsed: null,
-            backendMessage: "",
-          };
-        }
-
-        try {
-          const parsed = JSON.parse(text);
-          return {
-            raw: safeBodyPreview(text),
-            parsed,
-            backendMessage:
-              parsed?.message || parsed?.error || parsed?.error_description || parsed?.details || "",
-          };
-        } catch {
-          return {
-            raw: safeBodyPreview(text),
-            parsed: null,
-            backendMessage: safeBodyPreview(text),
-          };
-        }
-      }
-
-      function hasUsableAccessToken(session) {
-        return Boolean(session?.access_token && typeof session.access_token === "string" && session.access_token.includes("."));
-      }
-
-      function getJobId(job) {
-        if (!job) {
-          return crypto.randomUUID();
-        }
-
-        if (!job._localId) {
-          job._localId = String(job.id || job.print_job_id || job.jobId || crypto.randomUUID());
-        }
-
-        return job._localId;
-      }
-
-      function showView(viewName) {
-        Object.values(views).forEach((view) => view.classList.add("hidden"));
-        views[viewName].classList.remove("hidden");
-      }
-
-      function showLoading(message) {
-        stopPolling();
-        clearReconnectTimer();
-        showView("loading");
-        setStatus(loadingMessage, message, "info");
-      }
-
-      function showSetup(message = "", state = "info") {
-        stopPolling();
-        clearReconnectTimer();
-        showView("setup");
-        setSetupLoading(false);
-        setStatus(setupStatus, message, state);
-        importConfigButton.focus();
-      }
-
-      function showLogin(message = "", state = "info") {
-        stopPolling();
-        clearReconnectTimer();
-        showView("login");
-        setLoginLoading(false);
-        setStatus(loginStatus, message, state);
-        emailInput.focus();
-      }
-
-      function showBootstrapping() {
-        showView("loading");
-        setStatus(loadingMessage, "Conectando a loja...", "info");
-      }
-
-      function showReconnecting(message = "Reconectando...") {
-        showView("loading");
-        setStatus(loadingMessage, message, "info");
-      }
-
-      function showConnected(message = "Connected") {
-        const config = loadConfig();
-
-        showView("connected");
-        storeName.textContent = config.store?.name || "-";
-        serverName.textContent = config.supabaseUrl || "-";
-        printerCount.textContent = String(config.printers.length);
-        setStatus(connectedStatus, message, "success");
-        updateDiagnostics({
-          supabaseUrl: config.supabaseUrl || "-",
-          authStatus: "Conectado",
-          connectedPrinterCount: String(config.printers.length),
-          currentStore: config.store?.name || config.store?.id || "-",
-          tokenVersion: config.tokenVersion ?? "-",
-        });
-        refreshAppStatus();
-        refreshLocalPrinters();
-      }
-
-      async function showLocalBridge(message = "Ponte local pronta") {
-        stopPolling();
-        stopHeartbeat();
-        clearReconnectTimer();
-        showView("localBridge");
-        setStatus(localBridgeStatus, message, "success");
-        await refreshLocalBridge();
-      }
-
-      async function refreshLocalBridge() {
-        if (!window.printAgent?.getLocalBridgeStatus) {
-          setStatus(localBridgeStatus, "API local indisponivel no Electron", "error");
-          return null;
-        }
+      async function refreshPrinters() {
+        refreshPrintersButton.disabled = true;
+        setMessage("Atualizando impressoras...");
 
         try {
           const status = await window.printAgent.getLocalBridgeStatus();
-          runtime.localPrinters = Array.isArray(status.printers) ? status.printers : [];
-          runtime.localBridgeSettings = status.settings || getDefaultLocalBridgeSettings();
-          localServerUrl.textContent = status.server?.url || "http://localhost:18181";
-          localServerStatus.textContent = status.server?.listening ? "Online" : "Inicializando";
-          localDefaultPrinter.textContent = status.defaultPrinter || "-";
-          lastPrintStatus.textContent = formatLastPrint(status.diagnostics?.lastPrint);
-          lastPrintError.textContent = status.diagnostics?.lastError?.message || "-";
-          localAppVersion.textContent = status.version || "-";
-          paperSizeSelect.value = runtime.localBridgeSettings.paperSize || "80mm";
-          autoUpdateEnabledInput.checked = Boolean(runtime.localBridgeSettings.autoUpdateEnabled);
-          updateStatus.textContent = formatUpdateStatus(status.diagnostics?.update);
-          renderLocalBridgePrinters();
-          renderAliasControls();
-          updateDiagnostics({
-            authStatus: "Local mode",
-            pollingStatus: "Desativado",
-            lastBackendError: "-",
-            connectedPrinterCount: String(runtime.localPrinters.length),
-            currentStore: "Local",
-          });
-          return status;
+          state.printers = Array.isArray(status.printers) ? status.printers : [];
+          state.settings = {
+            ...state.settings,
+            ...(status.settings || {}),
+          };
+          setPaperSize(state.settings.paperSize);
+          renderPrinters();
+          setOnline(true);
+          setMessage(state.printers.length ? "" : "Instale uma impressora no Windows para continuar.", state.printers.length ? "info" : "error");
+          updateInstallButton(status.diagnostics?.update);
         } catch {
-          runtime.localPrinters = [];
-          renderLocalBridgePrinters();
-          renderAliasControls();
-          setStatus(localBridgeStatus, "Falha ao atualizar ponte local", "error");
-          return null;
+          state.printers = [];
+          renderPrinters();
+          setOnline(false);
+          setMessage("Print Assistant offline.", "error");
+        } finally {
+          refreshPrintersButton.disabled = false;
         }
       }
 
-      function getDefaultLocalBridgeSettings() {
-        return {
-          aliases: {},
-          preferredPrinter: "",
-          paperSize: "80mm",
-          routes: {
-            kitchen: "",
-            balcony: "",
-          },
-          autoUpdateEnabled: false,
-        };
-      }
-
-      function formatLastPrint(lastPrint) {
-        if (!lastPrint) {
-          return "-";
-        }
-
-        const printerName = lastPrint.printerName || lastPrint.printer || "-";
-        return `${lastPrint.status || "accepted"} - ${printerName}`;
-      }
-
-      function formatUpdateStatus(update) {
-        if (!update) {
-          return "Preparado, aguardando ativacao.";
-        }
-
-        if (!update.enabled) {
-          return "Preparado, desativado por configuracao.";
-        }
-
-        if (update.downloaded) {
-          return `Baixada versao ${update.version || "nova"}.`;
-        }
-
-        if (update.available) {
-          return `Disponivel versao ${update.version || "nova"}.`;
-        }
-
-        if (update.checking) {
-          return "Verificando atualizacoes...";
-        }
-
-        if (update.error) {
-          return `Erro: ${update.error}`;
-        }
-
-        return update.lastCheckedAt ? `Verificado em ${update.lastCheckedAt}` : "Preparado.";
-      }
-
-      function renderLocalBridgePrinters() {
-        if (!runtime.localPrinters.length) {
-          localBridgePrinterList.innerHTML = '<div class="list-item warning">Nenhuma impressora encontrada no Windows.</div>';
-          return;
-        }
-
-        localBridgePrinterList.innerHTML = runtime.localPrinters
-          .map((printer) => {
-            const status = printer.status === null || printer.status === undefined ? "" : `Status: ${escapeHtml(printer.status)}`;
-            const defaultLabel = printer.isDefault ? "Padrao Windows" : "Disponivel";
-
-            return `<div class="list-item">
-              <strong>${escapeHtml(printer.displayName || printer.name)}</strong>
-              ${escapeHtml(defaultLabel)}${status ? ` - ${status}` : ""}
-            </div>`;
-          })
-          .join("");
-      }
-
-      function renderAliasControls() {
-        const options = runtime.localPrinters
-          .map((printer) => `<option value="${escapeHtml(printer.name)}">${escapeHtml(printer.displayName || printer.name)}</option>`)
-          .join("");
-        const placeholder = '<option value="">Impressora padrao do Windows</option>';
-
-        preferredPrinterSelect.innerHTML = placeholder + options;
-        aliasPrinterSelect.innerHTML = placeholder + options;
-        testPrinterSelect.innerHTML = placeholder + options;
-        kitchenPrinterSelect.innerHTML = '<option value="">Cozinha sem rota fixa</option>' + options;
-        balconyPrinterSelect.innerHTML = '<option value="">Balcao sem rota fixa</option>' + options;
-        preferredPrinterSelect.value = runtime.localBridgeSettings.preferredPrinter || "";
-        kitchenPrinterSelect.value = runtime.localBridgeSettings.routes?.kitchen || "";
-        balconyPrinterSelect.value = runtime.localBridgeSettings.routes?.balcony || "";
-
-        const aliases = runtime.localBridgeSettings.aliases || {};
-        const aliasEntries = Object.entries(aliases);
-
-        if (!aliasEntries.length) {
-          aliasList.innerHTML = '<div class="list-item">Nenhum alias configurado.</div>';
-          return;
-        }
-
-        aliasList.innerHTML = aliasEntries
-          .map(([alias, printerName]) => `<div class="list-item alias-row">
-            <strong>${escapeHtml(alias)}</strong>
-            <span>${escapeHtml(printerName)}</span>
-            <button type="button" data-remove-alias="${escapeHtml(alias)}">Remover</button>
-          </div>`)
-          .join("");
-      }
-
-      async function saveLocalBridgeSettings(nextSettings) {
-        if (!window.printAgent?.updateLocalSettings) {
-          setStatus(localBridgeStatus, "API de configuracao indisponivel", "error");
-          return null;
-        }
-
-        const settings = await window.printAgent.updateLocalSettings(nextSettings);
-        runtime.localBridgeSettings = settings;
-        await refreshLocalBridge();
-        return settings;
-      }
-
-      async function saveAlias() {
-        const alias = aliasNameInput.value.trim();
-        const printerName = aliasPrinterSelect.value.trim();
-
-        if (!alias || !printerName) {
-          setStatus(localBridgeStatus, "Informe alias e impressora.", "error");
-          return;
-        }
-
-        const aliases = {
-          ...(runtime.localBridgeSettings.aliases || {}),
-          [alias]: printerName,
+      async function saveSettings(nextSettings) {
+        state.settings = {
+          ...state.settings,
+          ...nextSettings,
         };
 
-        await saveLocalBridgeSettings({ aliases });
-        aliasNameInput.value = "";
-        setStatus(localBridgeStatus, `Alias ${alias} salvo.`, "success");
+        try {
+          await window.printAgent.updateLocalSettings({
+            preferredPrinter: state.settings.preferredPrinter,
+            paperSize: state.settings.paperSize,
+          });
+        } catch {
+          setMessage("Nao foi possivel salvar a preferencia.", "error");
+        }
       }
 
-      async function removeAlias(alias) {
-        const aliases = { ...(runtime.localBridgeSettings.aliases || {}) };
-        delete aliases[alias];
-        await saveLocalBridgeSettings({ aliases });
-        setStatus(localBridgeStatus, `Alias ${alias} removido.`, "success");
-      }
-
-      async function updatePaperSize() {
-        await saveLocalBridgeSettings({ paperSize: paperSizeSelect.value });
-        setStatus(localBridgeStatus, `Papel ${paperSizeSelect.value} selecionado.`, "success");
-      }
-
-      async function updatePreferredPrinter() {
-        await saveLocalBridgeSettings({ preferredPrinter: preferredPrinterSelect.value });
-        setStatus(localBridgeStatus, "Impressora preferida salva.", "success");
-      }
-
-      async function saveRoutes() {
-        await saveLocalBridgeSettings({
-          routes: {
-            kitchen: kitchenPrinterSelect.value,
-            balcony: balconyPrinterSelect.value,
-          },
-        });
-        setStatus(localBridgeStatus, "Rotas locais salvas.", "success");
-      }
-
-      async function updateAutoUpdateSetting() {
-        await saveLocalBridgeSettings({ autoUpdateEnabled: autoUpdateEnabledInput.checked });
-        setStatus(localBridgeStatus, "Preferencia de atualizacao salva.", "success");
-      }
-
-      async function testLocalPrint() {
-        if (!window.printAgent?.printLocal) {
-          setStatus(localBridgeStatus, "API de impressao local indisponivel", "error");
+      async function printTest() {
+        if (!printerSelect.value) {
+          setMessage("Escolha uma impressora.", "error");
           return;
         }
 
         testPrintButton.disabled = true;
-        setStatus(localBridgeStatus, "Enviando teste...", "info");
+        setMessage("Enviando teste...");
 
         try {
-          const result = await window.printAgent.printLocal({
-            printer: testPrinterSelect.value,
-            text: testTextInput.value || "Pedido de teste - Print Assistant",
-            paperSize: paperSizeSelect.value,
+          await window.printAgent.printLocal({
+            printer: printerSelect.value,
+            paperSize: getSelectedPaperSize(),
+            text: "Teste de impressao\nPrint Assistant",
           });
-          lastPrintStatus.textContent = `accepted - ${result.printer}`;
-          lastPrintError.textContent = "-";
-          setStatus(localBridgeStatus, `Teste impresso em ${result.printer}`, "success");
-        } catch (error) {
-          lastPrintStatus.textContent = "failure";
-          lastPrintError.textContent = error.message || "PRINT_FAILED";
-          setStatus(localBridgeStatus, `Falha no teste: ${error.message || "PRINT_FAILED"}`, "error");
+          setMessage("Teste enviado para a impressora.", "success");
+        } catch {
+          setMessage("Nao foi possivel imprimir o teste.", "error");
         } finally {
           testPrintButton.disabled = false;
         }
       }
 
-      function showPolling(message = "Polling") {
-        setStatus(connectedStatus, message, "info");
-      }
-
-      function showError(message) {
-        stopPolling();
-        showView("error");
-        setStatus(errorStatus, message, "error");
-      }
-
-      function setStatus(element, message, state = "info") {
-        element.textContent = message;
-        element.dataset.state = state;
-      }
-
-      function setSetupLoading(isLoading) {
-        importConfigButton.disabled = isLoading;
-        configDropzone.classList.toggle("is-loading", isLoading);
-        importConfigButton.textContent = isLoading ? "Importando..." : "Selecionar arquivo";
-      }
-
-      function setLoginLoading(isLoading) {
-        loginButton.disabled = isLoading;
-        emailInput.disabled = isLoading;
-        passwordInput.disabled = isLoading;
-        changeServerButton.disabled = isLoading;
-        loginButton.textContent = isLoading ? "Entrando..." : "Entrar";
-      }
-
-      async function refreshLocalPrinters() {
-        if (!window.printAgent?.getPrinters) {
-          runtime.localPrinters = [];
-          renderLocalPrinters();
-          writePrintLog("error", "API local de impressao indisponivel");
-          return [];
-        }
+      async function checkForUpdates() {
+        checkUpdateButton.disabled = true;
+        setMessage("Verificando atualizacao...");
 
         try {
-          runtime.localPrinters = await window.printAgent.getPrinters();
-          renderLocalPrinters();
-          renderPrinterWarnings();
-          logLocalPrinterSnapshot();
-          updateDiagnostics({
-            connectedPrinterCount: `${runtime.localPrinters.length} local / ${loadConfig().printers.length} backend`,
-          });
-          return runtime.localPrinters;
+          const result = await window.printAgent.checkForUpdates();
+
+          if (result?.downloaded || result?.available) {
+            updateInstallButton(result);
+            setMessage("Nova versao disponivel.", "success");
+            return;
+          }
+
+          setMessage("Voce ja esta na versao mais recente.", "success");
         } catch {
-          runtime.localPrinters = [];
-          renderLocalPrinters();
-          writePrintLog("error", "Falha ao listar impressoras do Windows");
-          return [];
+          setMessage("Nao foi possivel verificar agora.", "error");
+        } finally {
+          checkUpdateButton.disabled = false;
         }
       }
 
-      async function refreshAppStatus() {
-        if (!window.printAgent?.getAppStatus) {
-          appVersion.textContent = "-";
-          return null;
-        }
+      function updateInstallButton(update) {
+        const canInstall = Boolean(update?.downloaded);
+        installUpdateButton.classList.toggle("hidden", !canInstall);
+      }
+
+      async function installUpdate() {
+        setMessage("Atualizando...");
 
         try {
-          const status = await window.printAgent.getAppStatus();
-          appVersion.textContent = status?.version || "-";
-          return status;
+          await window.printAgent.installUpdate();
         } catch {
-          appVersion.textContent = "-";
-          return null;
+          setMessage("Atualizacao indisponivel agora.", "error");
         }
-      }
-
-      function logLocalPrinterSnapshot() {
-        const snapshot = runtime.localPrinters
-          .map((printer) => `${printer.name}:${printer.isDefault}:${printer.status}`)
-          .sort()
-          .join("|");
-
-        if (snapshot === runtime.lastPrinterSnapshot) {
-          return;
-        }
-
-        runtime.lastPrinterSnapshot = snapshot;
-        writeFilesystemLog("print", "local_printer_snapshot", "info", {
-          count: runtime.localPrinters.length,
-          defaultPrinter: runtime.localPrinters.find((printer) => printer.isDefault)?.name || "",
-          bluetoothCandidates: runtime.localPrinters
-            .filter((printer) => {
-              const text = `${printer.name || ""} ${printer.displayName || ""} ${printer.description || ""}`.toLowerCase();
-              return ["bluetooth", " bt ", "ble", "58mm", "pos-58", "thermal"].some((term) =>
-                text.includes(term),
-              );
-            })
-            .map((printer) => printer.name),
-        });
-      }
-
-      function renderLocalPrinters() {
-        if (!runtime.localPrinters.length) {
-          localPrinterList.innerHTML = '<div class="list-item warning">Nenhuma impressora encontrada.</div>';
-          return;
-        }
-
-        localPrinterList.innerHTML = runtime.localPrinters
-          .map((printer) => {
-            const defaultLabel = printer.isDefault ? "Padrao" : "Instalada";
-            const status = printer.status === null || printer.status === undefined ? "" : `Status: ${escapeHtml(printer.status)}`;
-
-            return `<div class="list-item">
-              <strong>${escapeHtml(printer.displayName || printer.name)}</strong>
-              ${escapeHtml(defaultLabel)}${status ? ` · ${status}` : ""}
-            </div>`;
-          })
-          .join("");
-      }
-
-      function renderPrinterWarnings() {
-        const config = loadConfig();
-        const missingPrinters = config.printers.filter((backendPrinter) => {
-          return !findLocalPrinter(backendPrinter);
-        });
-
-        if (!missingPrinters.length) {
-          printerWarnings.textContent = "Nenhum alerta.";
-          printerWarnings.classList.remove("warning");
-          return;
-        }
-
-        printerWarnings.classList.add("warning");
-        printerWarnings.textContent = `Impressora nao encontrada: ${missingPrinters
-          .map((printer) => printer.printer_target || printer.printer_name || printer.name || printer.id)
-          .join(", ")}`;
       }
 
       function escapeHtml(value) {
@@ -1656,1701 +475,22 @@
           .replaceAll("'", "&#39;");
       }
 
-      function normalizePrinterName(value) {
-        return String(value || "").trim().toLowerCase();
-      }
-
-      function findLocalPrinter(backendPrinter) {
-        const target = normalizePrinterName(
-          backendPrinter?.printer_target || backendPrinter?.printer_name || backendPrinter?.name,
-        );
-
-        if (!target) {
-          return null;
-        }
-
-        return (
-          runtime.localPrinters.find((printer) => normalizePrinterName(printer.name) === target) ||
-          runtime.localPrinters.find((printer) => normalizePrinterName(printer.displayName) === target) ||
-          null
-        );
-      }
-
-      function findBackendPrinterForJob(job) {
-        const config = loadConfig();
-        const jobPrinterId = String(job.printer_id || job.printerId || job.printer?.id || "");
-        const jobContext = String(job.context || job.print_context || job.type || "");
-
-        return (
-          config.printers.find((printer) => String(printer.id) === jobPrinterId) ||
-          config.printers.find((printer) => {
-            const contexts = Array.isArray(printer.contexts) ? printer.contexts.map(String) : [];
-            return jobContext && contexts.includes(jobContext);
-          }) ||
-          config.printers[0] ||
-          null
-        );
-      }
-
-      async function loadSupabaseLibrary() {
-        if (runtime.createClient) {
-          return;
-        }
-
-        try {
-          updateDiagnostics({ authStatus: "Carregando Supabase Auth" });
-          const supabaseModule = await import(SUPABASE_JS_MODULE_URL);
-          runtime.createClient = supabaseModule.createClient;
-          writeFilesystemLog("app", "supabase_library_loaded", "info");
-          updateDiagnostics({ authStatus: "Supabase Auth carregado" });
-        } catch {
-          writeFilesystemLog("app", "supabase_library_unavailable", "error");
-          updateDiagnostics({
-            authStatus: "Falha ao carregar Supabase Auth",
-            lastBackendError: "SUPABASE_LIBRARY_UNAVAILABLE",
-          });
-          throw createOperationalError("SUPABASE_LIBRARY_UNAVAILABLE");
-        }
-      }
-
-      function getSupabaseClient() {
-        const { supabaseUrl, publishableKey } = loadConfig();
-        const clientKey = `${supabaseUrl}|${publishableKey}`;
-
-        if (!runtime.createClient) {
-          throw new Error("SUPABASE_LIBRARY_UNAVAILABLE");
-        }
-
-        if (runtime.supabase && runtime.clientKey === clientKey) {
-          return runtime.supabase;
-        }
-
-        if (runtime.authSubscription) {
-          runtime.authSubscription.unsubscribe();
-          runtime.authSubscription = null;
-        }
-
-        runtime.supabase = runtime.createClient(supabaseUrl, publishableKey, {
-          auth: {
-            autoRefreshToken: true,
-            persistSession: false,
-            detectSessionInUrl: false,
-          },
-        });
-        runtime.clientKey = clientKey;
-        updateDiagnostics({
-          supabaseUrl,
-          authStatus: "Cliente Supabase inicializado",
-        });
-        writeFilesystemLog("app", "supabase_client_initialized", "info", {
-          supabaseUrl,
-          hasPublishableKey: Boolean(publishableKey),
-        });
-
-        const { data } = runtime.supabase.auth.onAuthStateChange((event, session) => {
-          if (session) {
-            saveConfig({ session });
-            updateDiagnostics({
-              authStatus: `Auth event: ${event}`,
-              jwtReceived: hasUsableAccessToken(session),
-              accessTokenExists: Boolean(session.access_token),
-            });
-          }
-
-          if (event === "SIGNED_OUT") {
-            clearSessionConfig();
-            updateDiagnostics({
-              authStatus: "Desconectado",
-              sessionRestored: "Nao",
-              jwtReceived: "Nao",
-              accessTokenExists: "Nao",
-            });
-          }
-        });
-
-        runtime.authSubscription = data.subscription;
-        return runtime.supabase;
-      }
-
-      async function restoreSession() {
-        const config = loadConfig();
-
-        if (!isSessionLike(config.session)) {
-          updateDiagnostics({
-            sessionRestored: "Nao",
-            jwtReceived: "Nao",
-            accessTokenExists: "Nao",
-          });
-          return null;
-        }
-
-        updateDiagnostics({
-          authStatus: "Restaurando sessao",
-          sessionRestored: "Tentando",
-          accessTokenExists: Boolean(config.session.access_token),
-          jwtReceived: hasUsableAccessToken(config.session),
-        });
-        writeFilesystemLog("app", "restore_session_start", "info", {
-          hasAccessToken: Boolean(config.session.access_token),
-          hasRefreshToken: Boolean(config.session.refresh_token),
-        });
-
-        const supabase = getSupabaseClient();
-        const { data, error } = await supabase.auth.setSession({
-          access_token: config.session.access_token,
-          refresh_token: config.session.refresh_token,
-        });
-
-        if (error || !data.session) {
-          clearSessionConfig();
-          updateDiagnostics({
-            authStatus: "Sessao expirada",
-            sessionRestored: "Nao",
-            jwtReceived: "Nao",
-            accessTokenExists: "Nao",
-            lastBackendError: error?.message || "SESSION_EXPIRED",
-          });
-          writeFilesystemLog("app", "restore_session_failed", "warn", {
-            message: error?.message || "SESSION_EXPIRED",
-            status: error?.status || "",
-          });
-          return null;
-        }
-
-        saveConfig({ session: data.session });
-        updateDiagnostics({
-          authStatus: "Sessao restaurada",
-          sessionRestored: "Sim",
-          jwtReceived: hasUsableAccessToken(data.session),
-          accessTokenExists: Boolean(data.session.access_token),
-        });
-        writeFilesystemLog("app", "restore_session_success", "info", {
-          hasAccessToken: Boolean(data.session.access_token),
-        });
-        return data.session;
-      }
-
-      async function getValidSession() {
-        const supabase = getSupabaseClient();
-        const { data } = await supabase.auth.getSession();
-
-        if (data.session) {
-          saveConfig({ session: data.session });
-          updateDiagnostics({
-            authStatus: "Sessao ativa",
-            sessionRestored: runtime.diagnostics.sessionRestored === "Tentando" ? "Sim" : runtime.diagnostics.sessionRestored,
-            jwtReceived: hasUsableAccessToken(data.session),
-            accessTokenExists: Boolean(data.session.access_token),
-          });
-          return data.session;
-        }
-
-        return restoreSession();
-      }
-
-      async function refreshSupabaseSession() {
-        const supabase = getSupabaseClient();
-        const currentSession = loadConfig().session;
-        writeFilesystemLog("app", "supabase_session_refresh_start", "info");
-        updateDiagnostics({ authStatus: "Atualizando sessao" });
-        const { data, error } = await supabase.auth.refreshSession(currentSession || undefined);
-
-        if (error || !data.session) {
-          clearSessionConfig();
-          writeFilesystemLog("app", "supabase_session_refresh_failed", "warn", {
-            message: error?.message || "SESSION_EXPIRED",
-            status: error?.status || "",
-          });
-          updateDiagnostics({
-            authStatus: "Sessao expirada",
-            sessionRestored: "Nao",
-            jwtReceived: "Nao",
-            accessTokenExists: "Nao",
-            lastBackendError: error?.message || "SESSION_EXPIRED",
-          });
-          throw createOperationalError("SESSION_EXPIRED", {
-            status: error?.status || "",
-            backendMessage: error?.message || "",
-          });
-        }
-
-        saveConfig({ session: data.session });
-        writeFilesystemLog("app", "supabase_session_refresh_success", "info");
-        updateDiagnostics({
-          authStatus: "Sessao atualizada",
-          jwtReceived: hasUsableAccessToken(data.session),
-          accessTokenExists: Boolean(data.session.access_token),
-        });
-        return data.session;
-      }
-
-      async function readJsonSafely(response, context = {}) {
-        const text = await response.text();
-
-        if (!text) {
-          return null;
-        }
-
-        try {
-          return JSON.parse(text);
-        } catch {
-          const details = {
-            status: response.status,
-            endpoint: context.endpoint || response.url || "",
-            bodyPreview: safeBodyPreview(text),
-          };
-          writeFilesystemLog(context.category || "app", "malformed_json_response", "warn", details);
-          throw createOperationalError("INVALID_JSON", details);
-        }
-      }
-
-      function validateBootstrapPayload(payload) {
-        if (!isPlainObject(payload)) {
-          updateDiagnostics({ bootstrapResponseStatus: "Resposta nao e JSON objeto" });
-          throw createOperationalError("MALFORMED_BOOTSTRAP", { reason: "payload_not_object" });
-        }
-
-        if (!isPlainObject(payload.store) || !payload.store.id || !payload.store.name) {
-          updateDiagnostics({ bootstrapResponseStatus: "Store ausente ou invalida" });
-          throw createOperationalError("MALFORMED_BOOTSTRAP", { reason: "store_invalid" });
-        }
-
-        const printAgent = isPlainObject(payload.printAgent) ? payload.printAgent : {};
-        const printAgentToken =
-          getFirstString(printAgent.token, payload.printAgentToken, payload.print_agent_token, payload.token);
-        const agentId = getFirstString(printAgent.id, printAgent.agentId, printAgent.agent_id, payload.agentId, payload.agent_id);
-        const tokenVersion =
-          printAgent.tokenVersion ??
-          printAgent.token_version ??
-          payload.tokenVersion ??
-          payload.token_version ??
-          null;
-        const pollingInterval =
-          printAgent.pollingInterval ??
-          printAgent.polling_interval ??
-          payload.pollingInterval ??
-          payload.polling_interval;
-
-        if (!printAgentToken) {
-          updateDiagnostics({ bootstrapResponseStatus: "Token de impressao ausente" });
-          throw createOperationalError("MALFORMED_BOOTSTRAP", { reason: "print_agent_token_missing" });
-        }
-
-        if (!Array.isArray(payload.printers)) {
-          updateDiagnostics({ bootstrapResponseStatus: "Lista de impressoras ausente" });
-          throw createOperationalError("MALFORMED_BOOTSTRAP", { reason: "printers_not_array" });
-        }
-
-        const config = {
-          store: payload.store,
-          printAgentToken,
-          agentId,
-          tokenVersion,
-          printers: payload.printers,
-          pollingInterval: normalizePollingInterval(pollingInterval),
-        };
-
-        updateDiagnostics({
-          bootstrapResponseStatus: "Payload valido",
-          connectedPrinterCount: String(config.printers.length),
-          currentStore: config.store?.name || config.store?.id || "-",
-          tokenVersion: config.tokenVersion ?? "-",
-        });
-
-        return config;
-      }
-
-      function getFirstString(...values) {
-        for (const value of values) {
-          if (typeof value === "string" && value.trim()) {
-            return value.trim();
-          }
-        }
-
-        return "";
-      }
-
-      async function fetchBootstrap(session, allowRefresh = true) {
-        let response;
-        const endpoint = getFunctionUrl("agent-bootstrap");
-        const hasAuthorization = hasUsableAccessToken(session);
-
-        if (!hasAuthorization) {
-          updateDiagnostics({
-            jwtReceived: Boolean(session?.access_token) ? "Malformed" : "Nao",
-            accessTokenExists: Boolean(session?.access_token),
-            bootstrapRequestStatus: "Bloqueado: JWT invalido",
-            lastBackendError: "MALFORMED_JWT",
-          });
-          throw createOperationalError("MALFORMED_JWT", {
-            endpoint,
-            hasAccessToken: Boolean(session?.access_token),
-          });
-        }
-
-        try {
-          updateDiagnostics({
-            bootstrapRequestStatus: `POST ${endpoint}`,
-            bootstrapResponseStatus: "Aguardando resposta",
-            accessTokenExists: Boolean(session?.access_token),
-            jwtReceived: hasAuthorization,
-          });
-          writeFilesystemLog("app", "bootstrap_request_start", "info", {
-            endpoint,
-            hasAuthorization,
-            allowRefresh,
-          });
-          response = await fetchWithTimeout(endpoint, {
-            method: "POST",
-            headers: {
-              Authorization: `Bearer ${session.access_token}`,
-              Accept: "application/json",
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ client: "electron-print-agent" }),
-          });
-        } catch (error) {
-          const code = classifyFetchError(error);
-          updateDiagnostics({
-            bootstrapResponseStatus: code,
-            lastBackendError: code,
-          });
-          writeFilesystemLog("app", "bootstrap_network_failure", "warn", {
-            endpoint,
-            code,
-            error,
-          });
-          throw createOperationalError(code, { endpoint, error });
-        }
-
-        updateDiagnostics({
-          bootstrapResponseStatus: `HTTP ${response.status}`,
-        });
-        writeFilesystemLog("app", "bootstrap_response_received", "info", {
-          endpoint,
-          status: response.status,
-          ok: response.ok,
-        });
-
-        if (response.status === 401 && allowRefresh) {
-          writeFilesystemLog("app", "bootstrap_session_refresh_required", "warn");
-          updateDiagnostics({ bootstrapResponseStatus: "HTTP 401 - atualizando sessao" });
-          const refreshedSession = await refreshSupabaseSession();
-          return fetchBootstrap(refreshedSession, false);
-        }
-
-        if (response.status === 401) {
-          clearSessionConfig();
-          const errorPayload = await readErrorPayload(response);
-          updateDiagnostics({
-            authStatus: "Nao autorizado no bootstrap",
-            lastBackendError: `HTTP 401 ${errorPayload.backendMessage || ""}`.trim(),
-          });
-          throw createOperationalError("SESSION_EXPIRED", {
-            endpoint,
-            status: response.status,
-            ...errorPayload,
-          });
-        }
-
-        if (!response.ok) {
-          const errorPayload = await readErrorPayload(response);
-          const code = classifyHttpStatus(response.status, "BOOTSTRAP");
-          updateDiagnostics({
-            bootstrapResponseStatus: `${code} HTTP ${response.status}`,
-            lastBackendError: errorPayload.backendMessage || code,
-          });
-          writeFilesystemLog("app", "bootstrap_request_failed", "warn", {
-            endpoint,
-            status: response.status,
-            code,
-            ...errorPayload,
-          });
-          throw createOperationalError(code, {
-            endpoint,
-            status: response.status,
-            ...errorPayload,
-          });
-        }
-
-        return readJsonSafely(response, { endpoint, category: "app" });
-      }
-
-      async function bootstrap(options = {}) {
-        if (runtime.bootstrapInFlight) {
-          writeFilesystemLog("app", "bootstrap_skipped_in_flight", "debug");
-          return false;
-        }
-
-        runtime.bootstrapInFlight = true;
-        writeFilesystemLog("app", "bootstrap_start", "info", {
-          reconnecting: Boolean(options.reconnecting),
-        });
-        stopPolling();
-        stopHeartbeat();
-
-        if (options.reconnecting) {
-          showReconnecting("Reconectando...");
-        } else {
-          showBootstrapping();
-        }
-
-        try {
-          const session = await getValidSession();
-
-          if (!session) {
-            updateDiagnostics({
-              authStatus: "Sessao ausente ou expirada",
-              sessionRestored: "Nao",
-              jwtReceived: "Nao",
-              accessTokenExists: "Nao",
-              bootstrapResponseStatus: "Bootstrap bloqueado sem sessao",
-            });
-            showLogin("Sessao expirada. Faca login novamente.", "error");
-            return false;
-          }
-
-          const payload = await fetchBootstrap(session);
-          const bootstrapConfig = validateBootstrapPayload(payload);
-
-          saveConfig(bootstrapConfig);
-          runtime.reconnectAttempts = 0;
-          showConnected("Connected");
-          await syncPrintersWithBackend();
-          startHeartbeat();
-          startPolling();
-          writeFilesystemLog("app", "bootstrap_success", "info", {
-            storeId: bootstrapConfig.store?.id || "",
-            printerCount: bootstrapConfig.printers.length,
-            pollingInterval: bootstrapConfig.pollingInterval,
-            tokenVersion: bootstrapConfig.tokenVersion,
-          });
-          return true;
-        } catch (error) {
-          writeFilesystemLog("app", "bootstrap_failure", "warn", { error });
-          return handleBootstrapError(error);
-        } finally {
-          runtime.bootstrapInFlight = false;
-        }
-      }
-
-      function handleBootstrapError(error) {
-        const code = getErrorCode(error);
-        writeFilesystemLog("app", "bootstrap_error_handled", "warn", {
-          code,
-          details: getErrorDetails(error),
-        });
-        updateDiagnostics({
-          bootstrapResponseStatus: code,
-          lastBackendError: getErrorDiagnostic(error),
-        });
-
-        if (code === "SESSION_EXPIRED" || code === "BOOTSTRAP_UNAUTHORIZED") {
-          showLogin("Sessao expirada. Faca login novamente.", "error");
-          return false;
-        }
-
-        if (code === "MALFORMED_JWT") {
-          showLogin("Sessao invalida. Faca login novamente.", "error");
-          return false;
-        }
-
-        if (code === "INVALID_URL") {
-          showSetup("URL invalida", "error");
-          return false;
-        }
-
-        if (code === "OFFLINE") {
-          showError("Computador offline. Verifique a internet.");
-          scheduleReconnect();
-          return false;
-        }
-
-        if (code === "DNS_FAILURE" || code === "NETWORK_FAILURE") {
-          showError("Servidor nao encontrado ou inacessivel.");
-          scheduleReconnect();
-          return false;
-        }
-
-        if (code === "NETWORK_TIMEOUT") {
-          showError("Tempo esgotado ao conectar no servidor.");
-          scheduleReconnect();
-          return false;
-        }
-
-        if (code === "INVALID_SSL") {
-          showError("Falha SSL ao conectar no servidor.");
-          scheduleReconnect();
-          return false;
-        }
-
-        if (code === "BOOTSTRAP_FORBIDDEN") {
-          showError("Usuario sem permissao para o Print Agent.");
-          return false;
-        }
-
-        if (code === "BOOTSTRAP_NOT_FOUND") {
-          showError("Funcao agent-bootstrap nao encontrada.");
-          return false;
-        }
-
-        if (code === "BOOTSTRAP_BACKEND_ERROR") {
-          showError("Erro interno no agent-bootstrap.");
-          scheduleReconnect();
-          return false;
-        }
-
-        if (code === "INVALID_JSON" || code === "MALFORMED_BOOTSTRAP") {
-          showError("Resposta invalida do servidor");
-          return false;
-        }
-
-        showError("Falha ao conectar");
-        scheduleReconnect();
-        return false;
-      }
-
-      async function agentRequest(path, options = {}) {
-        const config = loadConfig();
-        const { printAgentToken } = config;
-
-        if (!printAgentToken) {
-          updateDiagnostics({
-            pollingStatus: "Sem token de polling",
-            lastBackendError: "AGENT_TOKEN_MISSING",
-          });
-          throw createOperationalError("AGENT_TOKEN_MISSING");
-        }
-
-        const session = await getValidSession();
-
-        if (!session || !hasUsableAccessToken(session)) {
-          updateDiagnostics({
-            pollingStatus: "Bloqueado sem JWT",
-            lastBackendError: "AGENT_SESSION_REQUIRED",
-          });
-          throw createOperationalError("AGENT_SESSION_REQUIRED");
-        }
-
-        const headers = new Headers(options.headers || {});
-        headers.set("x-print-agent-token", printAgentToken);
-        headers.set("Accept", "application/json");
-
-        if (options.body && !headers.has("Content-Type")) {
-          headers.set("Content-Type", "application/json");
-        }
-
-        let response;
-        const endpoint = getFunctionUrl(path);
-        const isPollingRequest = String(path).startsWith("print-agent/pending");
-
-        if (isPollingRequest) {
-          updateDiagnostics({
-            pollingStatus: "Consultando backend",
-            lastPollingResponse: `GET ${endpoint}`,
-          });
-          writeFilesystemLog("app", "polling_request_start", "info", {
-            endpoint,
-            hasPrintAgentToken: Boolean(printAgentToken),
-          });
-        }
-
-        try {
-          response = await fetchWithTimeout(endpoint, {
-            ...options,
-            headers,
-          });
-        } catch (error) {
-          const code = classifyFetchError(error);
-          if (isPollingRequest) {
-            updateDiagnostics({
-              pollingStatus: code,
-              lastPollingResponse: code,
-              lastBackendError: code,
-            });
-            writeFilesystemLog("app", "polling_network_failure", "warn", {
-              endpoint,
-              code,
-              error,
-            });
-          }
-          throw createOperationalError(code, { endpoint, error });
-        }
-
-        if (response.status === 401) {
-          writeFilesystemLog("app", "agent_token_expired", "warn", { path });
-          updateDiagnostics({
-            pollingStatus: "Token expirado",
-            lastPollingResponse: "HTTP 401",
-            lastBackendError: "AGENT_TOKEN_EXPIRED",
-          });
-          throw createOperationalError("AGENT_TOKEN_EXPIRED", {
-            endpoint,
-            status: response.status,
-          });
-        }
-
-        if (isPollingRequest) {
-          updateDiagnostics({
-            lastPollingResponse: `HTTP ${response.status}`,
-          });
-          writeFilesystemLog("app", "polling_response_received", "info", {
-            endpoint,
-            status: response.status,
-            ok: response.ok,
-          });
-        }
-
-        return response;
-      }
-
-      async function pollPendingJobs() {
-        if (runtime.pollInFlight) {
-          updateDiagnostics({ pollingStatus: "Polling ja em andamento" });
-          return;
-        }
-
-        runtime.pollInFlight = true;
-        showPolling("Polling");
-        updateDiagnostics({ pollingStatus: "Polling em andamento" });
-
-        try {
-          const response = await agentRequest("print-agent/pending?limit=10", {
-            method: "GET",
-          });
-
-          if (!response.ok) {
-            const errorPayload = await readErrorPayload(response);
-            const code = classifyHttpStatus(response.status, "POLLING");
-            updateDiagnostics({
-              pollingStatus: code,
-              lastPollingResponse: `HTTP ${response.status}`,
-              lastBackendError: errorPayload.backendMessage || code,
-            });
-            writeFilesystemLog("app", "polling_request_failed", "warn", {
-              status: response.status,
-              code,
-              ...errorPayload,
-            });
-            throw createOperationalError(code, {
-              status: response.status,
-              ...errorPayload,
-            });
-          }
-
-          const payload = await readJsonSafely(response, {
-            endpoint: getSafeEndpoint("print-agent/pending?limit=10"),
-            category: "app",
-          });
-
-          if (hasTokenVersionChanged(payload)) {
-            writeFilesystemLog("app", "polling_token_version_changed", "warn", {
-              previousTokenVersion: loadConfig().tokenVersion ?? null,
-              nextTokenVersion: getPayloadTokenVersion(payload),
-            });
-            await recoverFromTokenRotation();
-            return;
-          }
-
-          const pendingJobs = normalizePendingJobs(payload);
-          await processAckQueue();
-          await processPendingJobs(pendingJobs);
-          await processLocalQueue();
-          if (pendingJobs.length) {
-            writeFilesystemLog("print", "polling_jobs_received", "info", {
-              count: pendingJobs.length,
-            });
-          }
-          setStatus(connectedStatus, "Connected", "success");
-          updateDiagnostics({
-            pollingStatus: "Ativo",
-            lastPollingResponse: `${new Date().toLocaleTimeString()} - HTTP ${response.status}, ${pendingJobs.length} job(s)`,
-            lastBackendError: "-",
-          });
-          runtime.reconnectAttempts = 0;
-        } catch (error) {
-          await handlePollingError(error);
-        } finally {
-          runtime.pollInFlight = false;
-        }
-      }
-
-      function normalizePendingJobs(payload) {
-        if (Array.isArray(payload)) {
-          return payload;
-        }
-
-        if (!payload || typeof payload !== "object") {
-          return [];
-        }
-
-        if (Array.isArray(payload.jobs)) {
-          return payload.jobs;
-        }
-
-        if (Array.isArray(payload.pending)) {
-          return payload.pending;
-        }
-
-        if (Array.isArray(payload.data)) {
-          return payload.data;
-        }
-
-        return [];
-      }
-
-      function getPayloadTokenVersion(payload) {
-        if (!payload || typeof payload !== "object") {
-          return null;
-        }
-
-        return payload.tokenVersion ?? payload.token_version ?? payload.printAgent?.tokenVersion ?? null;
-      }
-
-      function hasTokenVersionChanged(payload) {
-        const nextTokenVersion = getPayloadTokenVersion(payload);
-
-        if (nextTokenVersion === null || nextTokenVersion === undefined || nextTokenVersion === "") {
-          return false;
-        }
-
-        const currentTokenVersion = loadConfig().tokenVersion;
-
-        if (currentTokenVersion === null || currentTokenVersion === undefined || currentTokenVersion === "") {
-          return false;
-        }
-
-        return String(nextTokenVersion) !== String(currentTokenVersion);
-      }
-
-      async function getAgentHost() {
-        try {
-          const status = await window.printAgent?.getAppStatus?.();
-          return status?.host || navigator.userAgent;
-        } catch {
-          return navigator.userAgent;
-        }
-      }
-
-      function getPrinterDriver(printer) {
-        const options = printer?.options || {};
-        return (
-          printer?.driver ||
-          options["printer-make-and-model"] ||
-          options["device-uri"] ||
-          printer?.description ||
-          ""
-        );
-      }
-
-      async function buildPrinterRegistrationPayload() {
-        const config = loadConfig();
-        const host = await getAgentHost();
-        const printers = await refreshLocalPrinters();
-
-        return {
-          agent_id: config.agentId || "",
-          host,
-          tokenVersion: config.tokenVersion,
-          printers: printers.map((printer) => ({
-            agent_id: config.agentId || "",
-            host,
-            printer_name: printer.name,
-            display_name: printer.displayName || printer.name,
-            driver: getPrinterDriver(printer),
-            is_default: Boolean(printer.isDefault),
-            status: "online",
-          })),
-        };
-      }
-
-      async function syncPrintersWithBackend() {
-        const payload = await buildPrinterRegistrationPayload();
-        const snapshot = JSON.stringify(payload.printers.map((printer) => ({
-          name: printer.printer_name,
-          driver: printer.driver,
-          is_default: printer.is_default,
-        })).sort((a, b) => a.name.localeCompare(b.name)));
-
-        if (snapshot === runtime.lastSyncedPrinterSnapshot) {
-          writeFilesystemLog("print", "printer_backend_sync_skipped_unchanged", "debug", {
-            count: payload.printers.length,
-          });
-          return true;
-        }
-
-        writeFilesystemLog("print", "printer_backend_sync_start", "info", {
-          count: payload.printers.length,
-          hasAgentId: Boolean(payload.agent_id),
-        });
-
-        const response = await agentRequest("print-agent/printers", {
-          method: "POST",
-          body: JSON.stringify(payload),
-        });
-
-        if (!response.ok) {
-          const errorPayload = await readErrorPayload(response);
-          writeFilesystemLog("print", "printer_backend_sync_failed", "warn", {
-            status: response.status,
-            ...errorPayload,
-          });
-          throw createOperationalError(classifyHttpStatus(response.status, "PRINTER_SYNC"), {
-            status: response.status,
-            ...errorPayload,
-          });
-        }
-
-        const syncResult = await readJsonSafely(response, {
-          endpoint: getSafeEndpoint("print-agent/printers"),
-          category: "print",
-        });
-
-        if (Array.isArray(syncResult.printers)) {
-          saveConfig({ printers: syncResult.printers });
-        }
-
-        runtime.lastSyncedPrinterSnapshot = snapshot;
-        updateDiagnostics({
-          connectedPrinterCount: `${payload.printers.length} local / ${Array.isArray(syncResult.printers) ? syncResult.printers.length : "?"} backend`,
-        });
-        writeFilesystemLog("print", "printer_backend_sync_success", "info", {
-          count: payload.printers.length,
-        });
-        return true;
-      }
-
-      async function sendHeartbeat() {
-        try {
-          const response = await agentRequest("print-agent/heartbeat", {
-            method: "POST",
-            body: JSON.stringify({
-              agent_id: loadConfig().agentId || "",
-              host: await getAgentHost(),
-              status: "online",
-              sentAt: new Date().toISOString(),
-            }),
-          });
-
-          if (!response.ok) {
-            const errorPayload = await readErrorPayload(response);
-            throw createOperationalError(classifyHttpStatus(response.status, "HEARTBEAT"), {
-              status: response.status,
-              ...errorPayload,
-            });
-          }
-
-          writeFilesystemLog("app", "heartbeat_success", "debug");
-        } catch (error) {
-          const code = getErrorCode(error);
-          writeFilesystemLog("app", "heartbeat_failure", "warn", {
-            code,
-            details: getErrorDetails(error),
-          });
-
-          if (code === "AGENT_TOKEN_EXPIRED") {
-            await recoverFromTokenRotation();
-          }
-        }
-      }
-
-      async function processPendingJobs(jobs) {
-        if (jobs.length) {
-          writeFilesystemLog("print", "pending_jobs_processing", "info", { count: jobs.length });
-        }
-
-        for (const job of jobs) {
-          const jobId = getJobId(job);
-
-          if (isAckPending(jobId)) {
-            await markJobDone(jobId);
-            removeAck(jobId);
-            continue;
-          }
-
-          await processPrintJob(job, { fromQueue: false });
-        }
-      }
-
-      async function processAckQueue() {
-        const ackQueue = loadAckQueue();
-
-        if (ackQueue.length) {
-          writeFilesystemLog("print", "ack_queue_processing", "info", { count: ackQueue.length });
-        }
-
-        for (const item of ackQueue) {
-          try {
-            await markJobDone(item.id);
-            removeAck(item.id);
-            writeFilesystemLog("print", "ack_queue_done", "info", { jobId: item.id });
-          } catch (error) {
-            if (error.message === "AGENT_TOKEN_EXPIRED") {
-              await recoverFromTokenRotation();
-              return;
-            }
-
-            writePrintLog("retry", `Aguardando confirmacao do job ${item.id}`);
-            return;
-          }
-        }
-      }
-
-      async function processLocalQueue() {
-        if (runtime.queueProcessing) {
-          return;
-        }
-
-        runtime.queueProcessing = true;
-
-        try {
-          const queue = loadPrintQueue();
-
-          if (queue.length) {
-            writeFilesystemLog("print", "local_queue_processing", "info", { count: queue.length });
-          }
-
-          for (const queuedJob of queue) {
-            if (queuedJob.attempts >= MAX_QUEUE_ATTEMPTS_BEFORE_BACKOFF) {
-              continue;
-            }
-
-            await processPrintJob(queuedJob.job, { fromQueue: true });
-          }
-        } finally {
-          runtime.queueProcessing = false;
-        }
-      }
-
-      async function processPrintJob(job, options = {}) {
-        const jobId = getJobId(job);
-        const jobType = String(job.type || "").toLowerCase();
-        const backendPrinter = findBackendPrinterForJob(job);
-        writeFilesystemLog("print", "print_job_received", "info", {
-          jobId,
-          fromQueue: Boolean(options.fromQueue),
-          type: job.type || job.format || "",
-        });
-
-        if (!VALID_PRINT_JOB_TYPES.has(jobType)) {
-          writeFilesystemLog("print", "print_job_rejected_invalid_type", "warn", {
-            jobId,
-            type: job.type || "",
-          });
-
-          if (!options.fromQueue) {
-            await markJobError(jobId, `Invalid print job type: ${job.type || ""}`);
-          }
-
-          return;
-        }
-
-        if (!backendPrinter) {
-          enqueuePrintJob(job, "PRINTER_CONFIG_MISSING");
-          if (!options.fromQueue) {
-            await markJobError(jobId, "Printer configuration missing");
-          }
-          return;
-        }
-
-        await refreshLocalPrinters();
-        const localPrinter = findLocalPrinter(backendPrinter);
-
-        if (!localPrinter) {
-          enqueuePrintJob(job, "PRINTER_MISSING");
-          renderPrinterWarnings();
-          if (!options.fromQueue) {
-            await markJobError(jobId, `Printer missing: ${backendPrinter.printer_target || backendPrinter.name}`);
-          }
-          return;
-        }
-
-        writeFilesystemLog("print", "printer_selected", "info", {
-          jobId,
-          backendPrinterId: backendPrinter.id || "",
-          backendPrinterName: backendPrinter.name || "",
-          localPrinterName: localPrinter.name,
-        });
-
-        try {
-          await printJobToLocalPrinter(job, backendPrinter, localPrinter);
-        } catch (error) {
-          enqueuePrintJob(job, error.message || "PRINT_FAILED");
-
-          if (!options.fromQueue) {
-            await markJobError(jobId, error.message || "Print failed");
-          }
-
-          return;
-        }
-
-        removeQueuedPrintJob(jobId);
-        writePrintLog("success", `Job ${jobId} impresso`, {
-          printer: localPrinter.name,
-          backendPrinter: backendPrinter.id,
-        });
-        enqueueAck(jobId);
-
-        try {
-          await markJobDone(jobId);
-          removeAck(jobId);
-          writeFilesystemLog("print", "print_job_done_acknowledged", "info", { jobId });
-        } catch (error) {
-          if (error.message === "AGENT_TOKEN_EXPIRED") {
-            await recoverFromTokenRotation();
-            return;
-          }
-
-          writePrintLog("retry", `Job ${jobId} impresso, aguardando confirmacao`);
-        }
-      }
-
-      async function printJobToLocalPrinter(job, backendPrinter, localPrinter) {
-        if (!window.printAgent?.printHtml || !window.printAgent?.printPdf) {
-          throw new Error("LOCAL_PRINT_API_UNAVAILABLE");
-        }
-
-        const type = String(backendPrinter.type || job.type || "").toLowerCase();
-        const copies = Number(backendPrinter.copies || job.copies || 1);
-        const basePayload = {
-          job,
-          printerName: localPrinter.name,
-          type,
-          paperWidth: backendPrinter.paper_width || job.paper_width,
-          copies,
-          silent: true,
-        };
-
-        if (isPdfJob(job)) {
-          writeFilesystemLog("print", "print_dispatch_pdf", "info", {
-            jobId: getJobId(job),
-            printerName: localPrinter.name,
-          });
-
-          return window.printAgent.printPdf({
-            ...basePayload,
-            url: job.pdf_url || job.pdfUrl || job.document_url || job.url,
-            dataUrl: job.pdf_data_url || job.pdfDataUrl || "",
-          });
-        }
-
-        writeFilesystemLog("print", "print_dispatch_html", "info", {
-          jobId: getJobId(job),
-          printerName: localPrinter.name,
-        });
-
-        return window.printAgent.printHtml({
-          ...basePayload,
-          html: getJobHtml(job),
-        });
-      }
-
-      function isPdfJob(job) {
-        const format = String(job.format || job.content_type || job.mime_type || "").toLowerCase();
-        return (
-          format.includes("pdf") ||
-          Boolean(job.pdf_url || job.pdfUrl || job.pdf_data_url || job.pdfDataUrl)
-        );
-      }
-
-      function getJobHtml(job) {
-        if (typeof job.html === "string") {
-          return job.html;
-        }
-
-        if (typeof job.contentHtml === "string") {
-          return job.contentHtml;
-        }
-
-        if (typeof job.content === "string") {
-          return `<pre>${escapeHtml(job.content)}</pre>`;
-        }
-
-        if (Array.isArray(job.lines)) {
-          return job.lines.map((line) => `<div>${escapeHtml(line)}</div>`).join("");
-        }
-
-        return `<pre>${escapeHtml(JSON.stringify(job, null, 2))}</pre>`;
-      }
-
-      async function markJobDone(jobId) {
-        const response = await agentRequest(`print-agent/${encodeURIComponent(jobId)}/done`, {
-          method: "POST",
-          body: JSON.stringify({ printedAt: new Date().toISOString() }),
-        });
-
-        if (!response.ok) {
-          throw new Error("MARK_DONE_FAILED");
-        }
-
-        writeFilesystemLog("print", "mark_job_done_success", "info", { jobId });
-      }
-
-      async function markJobError(jobId, message) {
-        try {
-          writeFilesystemLog("print", "mark_job_error_start", "warn", { jobId, message });
-          await agentRequest(`print-agent/${encodeURIComponent(jobId)}/error`, {
-            method: "POST",
-            body: JSON.stringify({
-              message,
-              failedAt: new Date().toISOString(),
-            }),
-          });
-          writeFilesystemLog("print", "mark_job_error_success", "warn", { jobId });
-        } catch (error) {
-          if (error.message === "AGENT_TOKEN_EXPIRED") {
-            await recoverFromTokenRotation();
-            return;
-          }
-
-          writePrintLog("error", `Falha ao reportar erro do job ${jobId}`);
-        }
-      }
-
-      async function handlePollingError(error) {
-        const code = getErrorCode(error);
-        writeFilesystemLog("app", "polling_error", "warn", {
-          code,
-          details: getErrorDetails(error),
-        });
-        updateDiagnostics({
-          pollingStatus: code,
-          lastBackendError: getErrorDiagnostic(error),
-        });
-
-        if (code === "AGENT_TOKEN_EXPIRED") {
-          await recoverFromTokenRotation();
-          return;
-        }
-
-        if (code === "NETWORK_FAILURE" || code === "DNS_FAILURE" || code === "OFFLINE" || code === "NETWORK_TIMEOUT") {
-          stopPolling();
-          stopHeartbeat();
-          showReconnecting("Servidor nao encontrado. Tentando novamente...");
-          scheduleReconnect();
-          return;
-        }
-
-        stopPolling();
-        stopHeartbeat();
-        showReconnecting("Reconectando...");
-        scheduleReconnect();
-      }
-
-      async function recoverFromTokenRotation() {
-        writeFilesystemLog("app", "token_rotation_recovery_start", "warn");
-        stopPolling();
-        stopHeartbeat();
-        showReconnecting("Atualizando credenciais...");
-        await bootstrap({ reconnecting: true });
-      }
-
-      function startPolling() {
-        stopPolling();
-        const { pollingInterval, printAgentToken, session } = loadConfig();
-
-        if (!printAgentToken || !isSessionLike(session) || !hasUsableAccessToken(session)) {
-          updateDiagnostics({
-            pollingStatus: "Bloqueado sem bootstrap/auth",
-            lastBackendError: "POLLING_BLOCKED_UNAUTHENTICATED",
-          });
-          writeFilesystemLog("app", "polling_start_blocked_unauthenticated", "warn", {
-            hasPrintAgentToken: Boolean(printAgentToken),
-            hasSession: isSessionLike(session),
-            hasAccessToken: hasUsableAccessToken(session),
-          });
-          return;
-        }
-
-        pollPendingJobs();
-        runtime.pollingTimer = window.setInterval(pollPendingJobs, pollingInterval);
-        writeFilesystemLog("app", "polling_started", "info", { pollingInterval });
-        updateDiagnostics({ pollingStatus: `Ativo (${pollingInterval}ms)` });
-      }
-
-      function stopPolling() {
-        if (runtime.pollingTimer) {
-          window.clearInterval(runtime.pollingTimer);
-          runtime.pollingTimer = null;
-          writeFilesystemLog("app", "polling_stopped", "info");
-          updateDiagnostics({ pollingStatus: "Parado" });
-        }
-      }
-
-      function startHeartbeat() {
-        stopHeartbeat();
-        sendHeartbeat();
-        runtime.heartbeatTimer = window.setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
-        writeFilesystemLog("app", "heartbeat_started", "info", {
-          interval: HEARTBEAT_INTERVAL_MS,
-        });
-      }
-
-      function stopHeartbeat() {
-        if (runtime.heartbeatTimer) {
-          window.clearInterval(runtime.heartbeatTimer);
-          runtime.heartbeatTimer = null;
-          writeFilesystemLog("app", "heartbeat_stopped", "info");
-        }
-      }
-
-      function scheduleReconnect() {
-        clearReconnectTimer();
-
-        const delay = Math.min(
-          2000 * 2 ** runtime.reconnectAttempts,
-          MAX_RECONNECT_DELAY_MS,
-        );
-
-        runtime.reconnectAttempts += 1;
-        writeFilesystemLog("app", "reconnect_scheduled", "warn", {
-          delay,
-          reconnectAttempts: runtime.reconnectAttempts,
-        });
-        runtime.reconnectTimer = window.setTimeout(() => {
-          bootstrap({ reconnecting: true });
-        }, delay);
-      }
-
-      function clearReconnectTimer() {
-        if (runtime.reconnectTimer) {
-          window.clearTimeout(runtime.reconnectTimer);
-          runtime.reconnectTimer = null;
-          writeFilesystemLog("app", "reconnect_timer_cleared", "info");
-        }
-      }
-
-      async function saveSetup() {
-        const supabaseUrl = normalizeSupabaseUrl(supabaseUrlInput.value);
-        const publishableKey = publishableKeyInput.value.trim();
-
-        if (!isValidSupabaseUrl(supabaseUrl)) {
-          setStatus(setupStatus, "URL inválida", "error");
-          return;
-        }
-
-        if (!isValidPublishableKey(publishableKey)) {
-          setStatus(setupStatus, "Publishable key invalida", "error");
-          return;
-        }
-
-        setSetupLoading(true);
-        saveConfig({
-          ...getDefaultConfig(),
-          supabaseUrl,
-          publishableKey,
-        });
-        resetSupabaseClient();
-        setSetupLoading(false);
-        writeFilesystemLog("app", "setup_saved", "info", { supabaseUrl });
-        updateDiagnostics({
-          supabaseUrl,
-          authStatus: "Servidor configurado",
-          sessionRestored: "Nao",
-          jwtReceived: "Nao",
-          accessTokenExists: "Nao",
-          bootstrapRequestStatus: "-",
-          bootstrapResponseStatus: "-",
-          pollingStatus: "Parado",
-          lastBackendError: "-",
-        });
-        showLogin("Servidor salvo. Faca login para conectar.", "success");
-      }
-
-      async function importConfigFile(file) {
-        if (!file) {
-          return;
-        }
-
-        setSetupLoading(true);
-        setStatus(setupStatus, "Validando configuracao...", "info");
-
-        try {
-          if (!isValidConfigExtension(file.name)) {
-            throw createOperationalError("CONFIG_FILE_EXTENSION_INVALID");
-          }
-
-          const rawText = await readFileAsText(file);
-          let parsedConfig;
-
-          try {
-            parsedConfig = JSON.parse(rawText);
-          } catch {
-            throw createOperationalError("CONFIG_JSON_INVALID");
-          }
-
-          const importedConfig = normalizeImportedConfig(parsedConfig);
-
-          saveConfig({
-            ...importedConfig,
-            session: loadConfig().session,
-          });
-          resetSupabaseClient();
-          renderImportSummary(importedConfig);
-          updateDiagnostics({
-            supabaseUrl: importedConfig.supabaseUrl,
-            authStatus: "Configuracao importada",
-            sessionRestored: "Nao",
-            jwtReceived: "Nao",
-            accessTokenExists: "Nao",
-            bootstrapRequestStatus: "Config importada",
-            bootstrapResponseStatus: "-",
-            pollingStatus: "Iniciando",
-            lastBackendError: "-",
-            connectedPrinterCount: String(importedConfig.printers.length),
-            currentStore: importedConfig.store?.name || importedConfig.store?.id || "-",
-            tokenVersion: importedConfig.tokenVersion ?? "-",
-          });
-          writeFilesystemLog("app", "config_import_success", "info", {
-            fileName: file.name,
-            supabaseUrl: importedConfig.supabaseUrl,
-            storeId: importedConfig.store?.id || "",
-            storeName: importedConfig.store?.name || "",
-            printerCount: importedConfig.printers.length,
-            pollingInterval: importedConfig.pollingInterval,
-            tokenVersion: importedConfig.tokenVersion,
-            hasPrintAgentToken: Boolean(importedConfig.printAgentToken),
-          });
-          setStatus(setupStatus, `Configuracao importada: ${importedConfig.store?.name || "DALMAGO"}`, "success");
-          await startFromImportedConfig();
-        } catch (error) {
-          const message = getConfigImportErrorMessage(error);
-          setStatus(setupStatus, message, "error");
-          updateDiagnostics({
-            authStatus: "Falha na importacao",
-            lastBackendError: getErrorCode(error),
-          });
-          writeFilesystemLog("app", "config_import_failed", "warn", {
-            fileName: file.name,
-            code: getErrorCode(error),
-            details: getErrorDetails(error),
-          });
-        } finally {
-          setSetupLoading(false);
-          configFileInput.value = "";
-        }
-      }
-
-      function readFileAsText(file) {
-        return new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(String(reader.result || ""));
-          reader.onerror = () => reject(createOperationalError("CONFIG_FILE_READ_FAILED"));
-          reader.readAsText(file);
-        });
-      }
-
-      function renderImportSummary(config) {
-        importSummary.classList.remove("hidden");
-        importSummary.innerHTML = `
-          <p><strong>Projeto:</strong> DALMAGO</p>
-          <p><strong>Loja:</strong> ${escapeHtml(config.store?.name || "-")}</p>
-          <p><strong>Impressoras:</strong> ${escapeHtml(String(config.printers.length))}</p>
-          <p><strong>Status:</strong> Configuracao pareada com sucesso.</p>
-        `;
-      }
-
-      async function startFromImportedConfig() {
-        const config = loadConfig();
-
-        if (!config.supabaseUrl || !config.publishableKey || !config.printAgentToken) {
-          showSetup("Importe uma configuracao valida.", "error");
-          return;
-        }
-
-        getSupabaseClient();
-
-        if (config.session) {
-          await bootstrap({ reconnecting: true });
-          return;
-        }
-
-        showLogin("Configuracao importada. Faca login para iniciar o Print Agent.", "info");
-      }
-
-      async function login() {
-        const email = emailInput.value.trim();
-        const password = passwordInput.value;
-
-        if (!email || !password) {
-          setStatus(loginStatus, "Informe email e senha.", "error");
-          return;
-        }
-
-        setLoginLoading(true);
-        setStatus(loginStatus, "Autenticando...", "info");
-        writeFilesystemLog("app", "login_start", "info", { email });
-        updateDiagnostics({
-          authStatus: "Autenticando",
-          sessionRestored: "Nao",
-          jwtReceived: "Nao",
-          accessTokenExists: "Nao",
-          lastBackendError: "-",
-        });
-
-        try {
-          const supabase = getSupabaseClient();
-          writeFilesystemLog("app", "sign_in_with_password_start", "info", { email });
-          const { data, error } = await supabase.auth.signInWithPassword({
-            email,
-            password,
-          });
-
-          if (error || !data.session) {
-            clearSessionConfig();
-            writeFilesystemLog("app", "sign_in_with_password_failed", "warn", {
-              email,
-              message: error?.message || "INVALID_CREDENTIALS",
-              status: error?.status || "",
-            });
-            updateDiagnostics({
-              authStatus: error?.status === 400 ? "Credenciais invalidas" : "Falha no login",
-              jwtReceived: "Nao",
-              accessTokenExists: "Nao",
-              lastBackendError: error?.message || "INVALID_CREDENTIALS",
-            });
-            setStatus(loginStatus, "Login invalido", "error");
-            return;
-          }
-
-          saveConfig({ session: data.session });
-          passwordInput.value = "";
-          writeFilesystemLog("app", "sign_in_with_password_success", "info", {
-            email,
-            hasAccessToken: Boolean(data.session.access_token),
-            hasRefreshToken: Boolean(data.session.refresh_token),
-          });
-          updateDiagnostics({
-            authStatus: "Login realizado",
-            sessionRestored: "Nova sessao",
-            jwtReceived: hasUsableAccessToken(data.session),
-            accessTokenExists: Boolean(data.session.access_token),
-          });
-          await bootstrap();
-        } catch (error) {
-          const code = getErrorCode(error);
-          writeFilesystemLog("app", "login_failure", "warn", {
-            email,
-            code,
-            details: getErrorDetails(error),
-            error,
-          });
-          updateDiagnostics({
-            authStatus: "Falha no login",
-            lastBackendError: getErrorDiagnostic(error),
-          });
-          if (code === "SUPABASE_LIBRARY_UNAVAILABLE") {
-            setStatus(loginStatus, "Falha ao carregar Supabase Auth", "error");
-            return;
-          }
-
-          setStatus(loginStatus, "Servidor nao encontrado", "error");
-        } finally {
-          setLoginLoading(false);
-        }
-      }
-
-      async function logout() {
-        stopPolling();
-        stopHeartbeat();
-        clearReconnectTimer();
-        writeFilesystemLog("app", "logout_start", "info");
-
-        try {
-          if (runtime.supabase) {
-            await runtime.supabase.auth.signOut();
-          }
-        } catch {
-          // Sign-out is best effort; local credentials are always cleared below.
-        }
-
-        clearSessionConfig();
-        writeFilesystemLog("app", "logout_complete", "info");
-        showLogin("Sessao encerrada.", "info");
-      }
-
-      function resetSupabaseClient() {
-        if (runtime.authSubscription) {
-          runtime.authSubscription.unsubscribe();
-        }
-
-        runtime.supabase = null;
-        runtime.authSubscription = null;
-        runtime.clientKey = "";
-      }
-
-      function resetInstallation() {
-        stopPolling();
-        stopHeartbeat();
-        clearReconnectTimer();
-        resetSupabaseClient();
-        clearConfig();
-        writeFilesystemLog("app", "installation_reset", "warn");
-        showSetup();
-      }
-
-      async function boot() {
-        showLoading("Carregando...");
-        writeFilesystemLog("app", "renderer_boot_start", "info");
-        updateDiagnostics({
-          ...getDefaultDiagnostics(),
-          onlineStatus: navigator.onLine ? "Online" : "Offline",
-        });
-
-        if (LOCAL_MODE_ENABLED) {
-          writeFilesystemLog("app", "renderer_boot_local_mode", "info");
-          await showLocalBridge();
-          return;
-        }
-
-        try {
-          await loadSupabaseLibrary();
-        } catch {
-          writeFilesystemLog("app", "supabase_library_load_failed", "error");
-          showError("Falha ao carregar Supabase Auth");
-          return;
-        }
-
-        const config = loadConfig();
-        updateDiagnostics({
-          supabaseUrl: config.supabaseUrl || "-",
-          sessionRestored: isSessionLike(config.session) ? "Pendente" : "Nao",
-          accessTokenExists: Boolean(config.session?.access_token),
-          jwtReceived: hasUsableAccessToken(config.session),
-          connectedPrinterCount: String(config.printers.length),
-          currentStore: config.store?.name || config.store?.id || "-",
-          tokenVersion: config.tokenVersion ?? "-",
-        });
-
-        if (!config.supabaseUrl || !config.publishableKey) {
-          writeFilesystemLog("app", "renderer_boot_requires_config_import", "info");
-          showSetup();
-          return;
-        }
-
-        if (!isValidSupabaseUrl(config.supabaseUrl)) {
-          showSetup("URL inválida", "error");
-          return;
-        }
-
-        if (!isValidPublishableKey(config.publishableKey)) {
-          showSetup("Publishable key invalida", "error");
-          return;
-        }
-
-        if (!config.printAgentToken) {
-          writeFilesystemLog("app", "renderer_boot_requires_config_token", "warn");
-          showSetup("Importe uma configuracao com token do Print Agent.", "error");
-          return;
-        }
-
-        getSupabaseClient();
-
-        if (config.session) {
-          await bootstrap({ reconnecting: true });
-          return;
-        }
-
-        writeFilesystemLog("app", "renderer_boot_waiting_for_auth", "info", {
-          storeId: config.store?.id || "",
-          storeName: config.store?.name || "",
-          printerCount: config.printers.length,
-          pollingInterval: config.pollingInterval,
-          hasPrintAgentToken: Boolean(config.printAgentToken),
-        });
-        showLogin("Faca login para iniciar o Print Agent.", "info");
-      }
-
-      refreshLocalBridgeButton.addEventListener("click", () => refreshLocalBridge());
-      saveAliasButton.addEventListener("click", saveAlias);
-      preferredPrinterSelect.addEventListener("change", updatePreferredPrinter);
-      paperSizeSelect.addEventListener("change", updatePaperSize);
-      saveRoutesButton.addEventListener("click", saveRoutes);
-      testPrintButton.addEventListener("click", testLocalPrint);
-      autoUpdateEnabledInput.addEventListener("change", updateAutoUpdateSetting);
-      aliasList.addEventListener("click", (event) => {
-        const alias = event.target?.dataset?.removeAlias;
-
-        if (alias) {
-          removeAlias(alias);
-        }
+      printerSelect.addEventListener("change", () => {
+        saveSettings({ preferredPrinter: printerSelect.value });
       });
 
-      importConfigButton.addEventListener("click", () => configFileInput.click());
-      configFileInput.addEventListener("change", () => importConfigFile(configFileInput.files?.[0]));
-
-      configDropzone.addEventListener("click", () => configFileInput.click());
-      configDropzone.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          configFileInput.click();
-        }
-      });
-      configDropzone.addEventListener("dragover", (event) => {
-        event.preventDefault();
-        configDropzone.classList.add("is-dragging");
-      });
-      configDropzone.addEventListener("dragleave", () => {
-        configDropzone.classList.remove("is-dragging");
-      });
-      configDropzone.addEventListener("drop", (event) => {
-        event.preventDefault();
-        configDropzone.classList.remove("is-dragging");
-        importConfigFile(event.dataTransfer.files?.[0]);
-      });
-
-      loginForm.addEventListener("submit", (event) => {
-        event.preventDefault();
-        login();
-      });
-
-      changeServerButton.addEventListener("click", resetInstallation);
-      disconnectButton.addEventListener("click", logout);
-      retryButton.addEventListener("click", () => bootstrap({ reconnecting: true }));
-      resetButton.addEventListener("click", resetInstallation);
-
-      window.printAgent?.onLifecycleCommand?.(({ command }) => {
-        writeFilesystemLog("app", "lifecycle_command_received", "info", { command });
-
-        if (command === "restart-polling") {
-          bootstrap({ reconnecting: true });
-          return;
-        }
-
-        if (command === "shutdown") {
-          stopPolling();
-          clearReconnectTimer();
-        }
-      });
-
-      window.addEventListener("error", (event) => {
-        writeFilesystemLog("error", "renderer_uncaught_error", "error", {
-          message: event.message,
-          filename: event.filename,
-          lineno: event.lineno,
-          colno: event.colno,
-          error: event.error,
+      document.querySelectorAll('input[name="paperSize"]').forEach((input) => {
+        input.addEventListener("change", () => {
+          saveSettings({ paperSize: getSelectedPaperSize() });
         });
       });
 
-      window.addEventListener("unhandledrejection", (event) => {
-        writeFilesystemLog("error", "renderer_unhandled_rejection", "error", {
-          reason: event.reason,
-        });
-      });
+      refreshPrintersButton.addEventListener("click", refreshPrinters);
+      testPrintButton.addEventListener("click", printTest);
+      checkUpdateButton.addEventListener("click", checkForUpdates);
+      installUpdateButton.addEventListener("click", installUpdate);
 
-      window.addEventListener("online", () => {
-        updateDiagnostics({ onlineStatus: "Online" });
-        writeFilesystemLog("app", "network_online", "info");
-      });
-
-      window.addEventListener("offline", () => {
-        updateDiagnostics({ onlineStatus: "Offline" });
-        writeFilesystemLog("app", "network_offline", "warn");
-      });
-
-      renderDiagnostics();
-      boot();
+      refreshPrinters();
     </script>
   </body>
 </html>
