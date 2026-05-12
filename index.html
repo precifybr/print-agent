@@ -216,6 +216,22 @@
         font-size: 13px;
       }
 
+      .quiet-result {
+        display: grid;
+        gap: 4px;
+        border-radius: 12px;
+        padding: 12px;
+        background: #f5f7f1;
+        color: #5d6658;
+        font-size: 13px;
+        line-height: 1.35;
+      }
+
+      .quiet-result strong {
+        color: #30372d;
+        font-size: 13px;
+      }
+
       .message {
         min-height: 20px;
         margin: 0;
@@ -282,7 +298,13 @@
 
           <button id="testPrintButton" type="button">Imprimir teste</button>
 
+          <div class="quiet-result" id="lastResult">
+            <strong>Ultima impressao</strong>
+            <span id="lastResultText">Nenhum teste executado.</span>
+          </div>
+
           <div class="update-row">
+            <button class="secondary" id="diagnosticButton" type="button">Diagnostico rapido</button>
             <button class="secondary" id="checkUpdateButton" type="button">Verificar atualizacao</button>
             <button id="installUpdateButton" class="hidden" type="button">Atualizar agora</button>
           </div>
@@ -301,8 +323,10 @@
       const printerSelect = document.getElementById("printerSelect");
       const refreshPrintersButton = document.getElementById("refreshPrintersButton");
       const testPrintButton = document.getElementById("testPrintButton");
+      const diagnosticButton = document.getElementById("diagnosticButton");
       const checkUpdateButton = document.getElementById("checkUpdateButton");
       const installUpdateButton = document.getElementById("installUpdateButton");
+      const lastResultText = document.getElementById("lastResultText");
       const message = document.getElementById("message");
 
       const state = {
@@ -379,6 +403,7 @@
           setPaperSize(state.settings.paperSize);
           renderPrinters();
           setOnline(true);
+          renderLastPrint(status.diagnostics?.lastPrintDiagnostic);
           setMessage(state.printers.length ? "" : "Instale uma impressora no Windows para continuar.", state.printers.length ? "info" : "error");
           updateInstallButton(status.diagnostics?.update);
         } catch {
@@ -422,12 +447,66 @@
             paperSize: getSelectedPaperSize(),
             text: "Teste de impressao\nPrint Assistant",
           });
+          lastResultText.textContent = "Teste enviado. Verifique se saiu na impressora.";
           setMessage("Teste enviado para a impressora.", "success");
         } catch {
+          await refreshLastPrintLog();
           setMessage("Nao foi possivel imprimir o teste.", "error");
         } finally {
           testPrintButton.disabled = false;
         }
+      }
+
+      async function runQuickDiagnostic() {
+        if (!printerSelect.value) {
+          setMessage("Escolha uma impressora.", "error");
+          return;
+        }
+
+        diagnosticButton.disabled = true;
+        setMessage("Executando diagnostico...");
+
+        try {
+          const result = await window.printAgent.printRawTest({
+            printer: printerSelect.value,
+          });
+          renderLastPrint(result.trace);
+          setMessage("Diagnostico enviado para a impressora.", "success");
+        } catch {
+          await refreshLastPrintLog();
+          setMessage("Diagnostico encontrou uma falha.", "error");
+        } finally {
+          diagnosticButton.disabled = false;
+        }
+      }
+
+      async function refreshLastPrintLog() {
+        try {
+          const log = await window.printAgent.getLastPrintLog();
+          renderLastPrint(log?.lastJob);
+        } catch {
+          lastResultText.textContent = "Nao foi possivel ler o ultimo diagnostico.";
+        }
+      }
+
+      function renderLastPrint(trace) {
+        if (!trace) {
+          lastResultText.textContent = "Nenhum teste executado.";
+          return;
+        }
+
+        if (trace.status === "success") {
+          lastResultText.textContent = "Concluida.";
+          return;
+        }
+
+        if (trace.status === "failure") {
+          const reason = trace.error?.message || trace.callback?.failureReason || "Falha na impressao.";
+          lastResultText.textContent = `Ultimo erro: ${reason}`;
+          return;
+        }
+
+        lastResultText.textContent = "Teste aceito.";
       }
 
       async function checkForUpdates() {
@@ -487,6 +566,7 @@
 
       refreshPrintersButton.addEventListener("click", refreshPrinters);
       testPrintButton.addEventListener("click", printTest);
+      diagnosticButton.addEventListener("click", runQuickDiagnostic);
       checkUpdateButton.addEventListener("click", checkForUpdates);
       installUpdateButton.addEventListener("click", installUpdate);
 

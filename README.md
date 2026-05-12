@@ -9,6 +9,8 @@ When the app starts, it opens a local HTTP server:
 - `http://localhost:18181/status`
 - `http://localhost:18181/printers`
 - `http://localhost:18181/print`
+- `http://localhost:18181/print-raw-test`
+- `http://localhost:18181/last-print-log`
 
 The local mode does not require Supabase auth, JWT, bootstrap, polling, remote queue, or token rotation.
 
@@ -109,12 +111,29 @@ Common errors:
 
 If `GET /status` fails, show the operator that Print Assistant is offline and ask them to open the desktop app. Do not fall back to cloud polling for local printing.
 
+### Print diagnostics
+
+`POST /print-raw-test`
+
+Runs a minimal Electron print test with a 300x600 hidden window, plain HTML, selected `deviceName`, and `silent: false`.
+
+```json
+{
+  "printer": "POS-58"
+}
+```
+
+`GET /last-print-log`
+
+Returns the latest diagnostic job, including checkpoints, selected printer, Electron callback, duration, and final error when available.
+
 ### Production notes
 
 - The server binds to `127.0.0.1:18181` and rejects non-loopback requests.
 - Print payloads are capped at 2 MB.
 - Duplicate prints with the same content/printer within a short window are rejected.
 - Logs are written under the app user data directory and avoid storing full HTML content.
+- Print diagnostics keep the latest 100 jobs and are capped at 5 MB.
 - Auto-update is prepared with `electron-updater` and GitHub Releases provider `precifybr/print-agent`.
 
 ## Installer name
@@ -149,6 +168,8 @@ Commands:
 - `npm start`
 - `npm run pack`
 - `npm run dist:win`
+- `npm run sync`
+- `npm run release`
 - `npm run release:win`
 
 The generated Windows installer is written to `dist/PrintAssistantSetup.exe`.

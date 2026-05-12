@@ -23,6 +23,8 @@ const startupMode = process.argv.includes("--hidden") || process.argv.includes("
 const LOG_MAX_SIZE_BYTES = 2 * 1024 * 1024;
 const LOG_ARCHIVE_COUNT = 3;
 const PRINT_TIMEOUT_MS = 30000;
+const PRINT_DIAGNOSTIC_MAX_JOBS = 100;
+const PRINT_DIAGNOSTIC_MAX_BYTES = 5 * 1024 * 1024;
 const LOG_LEVELS = new Set(["error", "warn", "info", "verbose", "debug", "silly"]);
 const LOG_CATEGORIES = new Set(["app", "print", "error"]);
 const LOCAL_BRIDGE_HOST = "127.0.0.1";
@@ -46,6 +48,8 @@ let localBridgeServer;
 let localBridgeListening = false;
 let cachedPrinters = [];
 let updateStatus = getDefaultUpdateStatus();
+let lastPrintDiagnostic = null;
+let printDiagnosticHistory = [];
 const recentPrintRequests = new Map();
 const localBridgeStats = {
   startedAt: new Date().toISOString(),
@@ -62,6 +66,7 @@ if (!gotSingleInstanceLock) {
   app.quit();
 } else {
   initializeLogging();
+  loadPrintDiagnostics();
   installProcessCrashHandlers();
   logApp("info", "process_start", {
     version: app.getVersion(),
@@ -114,6 +119,10 @@ function getLocalPrintJobsDirectory() {
   const jobsDirectory = path.join(app.getPath("userData"), "local-print-jobs");
   fs.mkdirSync(jobsDirectory, { recursive: true });
   return jobsDirectory;
+}
+
+function getPrintDiagnosticsPath() {
+  return path.join(getLogsDirectory(), "print-diagnostics.json");
 }
 
 function getDefaultLocalSettings() {
@@ -247,6 +256,115 @@ function logPrint(level, event, details = {}) {
 
 function logError(event, details = {}) {
   writeDiagnosticLog("error", "error", event, details);
+}
+
+function loadPrintDiagnostics() {
+  try {
+    const diagnostics = JSON.parse(fs.readFileSync(getPrintDiagnosticsPath(), "utf8"));
+    printDiagnosticHistory = Array.isArray(diagnostics.jobs)
+      ? diagnostics.jobs.slice(-PRINT_DIAGNOSTIC_MAX_JOBS)
+      : [];
+    lastPrintDiagnostic = printDiagnosticHistory[printDiagnosticHistory.length - 1] || null;
+  } catch {
+    printDiagnosticHistory = [];
+    lastPrintDiagnostic = null;
+  }
+}
+
+function savePrintDiagnostic(trace) {
+  if (!trace) {
+    return;
+  }
+
+  const existingIndex = printDiagnosticHistory.findIndex((job) => job.jobId === trace.jobId);
+
+  if (existingIndex >= 0) {
+    printDiagnosticHistory[existingIndex] = trace;
+  } else {
+    printDiagnosticHistory.push(trace);
+  }
+
+  printDiagnosticHistory = printDiagnosticHistory.slice(-PRINT_DIAGNOSTIC_MAX_JOBS);
+  lastPrintDiagnostic = trace;
+
+  let payload = JSON.stringify({ jobs: printDiagnosticHistory }, null, 2);
+
+  while (Buffer.byteLength(payload, "utf8") > PRINT_DIAGNOSTIC_MAX_BYTES && printDiagnosticHistory.length > 1) {
+    printDiagnosticHistory.shift();
+    payload = JSON.stringify({ jobs: printDiagnosticHistory }, null, 2);
+  }
+
+  try {
+    fs.writeFileSync(getPrintDiagnosticsPath(), `${payload}\n`, "utf8");
+  } catch (error) {
+    logError("print_diagnostic_save_failed", { error });
+  }
+}
+
+function createPrintTrace(type, details = {}) {
+  const trace = {
+    jobId: details.jobId || randomUUID(),
+    type,
+    requestedPrinter: details.requestedPrinter || "",
+    printer: details.printer || "",
+    startedAt: new Date().toISOString(),
+    finishedAt: "",
+    durationMs: 0,
+    status: "running",
+    steps: [],
+    callback: null,
+    error: null,
+  };
+
+  traceStep(trace, "request_received", true, details);
+  return trace;
+}
+
+function traceStep(trace, step, ok = true, details = {}) {
+  if (!trace) {
+    return null;
+  }
+
+  const startedAt = Date.parse(trace.startedAt) || Date.now();
+  const entry = {
+    step,
+    ok: Boolean(ok),
+    timeMs: Date.now() - startedAt,
+    at: new Date().toISOString(),
+    details: sanitizeLogDetails(details),
+  };
+
+  trace.steps.push(entry);
+  logPrint(ok ? "info" : "error", `trace_${step}`, {
+    jobId: trace.jobId,
+    ...details,
+  });
+  savePrintDiagnostic(trace);
+  return entry;
+}
+
+function finishPrintTrace(trace, status, details = {}) {
+  if (!trace) {
+    return null;
+  }
+
+  trace.status = status;
+  trace.finishedAt = new Date().toISOString();
+  trace.durationMs = Date.now() - (Date.parse(trace.startedAt) || Date.now());
+
+  if (details.error) {
+    trace.error = sanitizeLogDetails(details.error);
+  } else if (details.message) {
+    trace.error = { message: details.message };
+  }
+
+  traceStep(trace, "job_finished", status === "success", {
+    status,
+    durationMs: trace.durationMs,
+    error: trace.error,
+  });
+  savePrintDiagnostic(trace);
+  return trace;
 }
 
 function formatLogMessage(category, event, details = {}) {
@@ -856,11 +974,22 @@ function buildTextPrintHtml(text) {
 
 async function printLocalPayload(payload = {}) {
   const jobId = randomUUID();
+  const trace = createPrintTrace("local_print", {
+    jobId,
+    requestedPrinter: payload.printer || payload.printerName || "",
+  });
   const settings = readLocalSettings();
   const requestedRoute = String(payload.route || "").trim().toLowerCase();
   const routePrinter = requestedRoute && settings.routes[requestedRoute] ? settings.routes[requestedRoute] : "";
   const requestedPrinter = payload.printer || payload.printerName || routePrinter || "";
   const printSignature = getPrintRequestSignature(payload, requestedPrinter);
+  trace.requestedPrinter = requestedPrinter;
+
+  traceStep(trace, "json_validated", true, {
+    hasHtml: Boolean(payload.html),
+    hasText: typeof payload.text === "string",
+    requestedPrinter,
+  });
 
   if (isDuplicatePrintRequest(printSignature)) {
     logPrint("warn", "local_print_duplicate_rejected", {
@@ -871,10 +1000,16 @@ async function printLocalPayload(payload = {}) {
     throw createHttpError(409, "DUPLICATE_PRINT_REQUEST");
   }
 
+  traceStep(trace, "windows_printers_lookup_start", true, { requestedPrinter });
   const { printer, resolvedBy } = await resolveLocalPrinter(requestedPrinter);
   const paperSize = PAPER_SIZES.has(payload.paperSize) ? payload.paperSize : settings.paperSize;
 
   if (!printer) {
+    traceStep(trace, "printer_not_found", false, {
+      requestedPrinter,
+      foundPrinters: cachedPrinters.map((cachedPrinter) => cachedPrinter.name),
+    });
+    finishPrintTrace(trace, "failure", { message: "NO_PRINTER_AVAILABLE" });
     logPrint("error", "local_print_no_printer_available", {
       jobId,
       requestedPrinter,
@@ -882,7 +1017,16 @@ async function printLocalPayload(payload = {}) {
     throw createHttpError(503, "NO_PRINTER_AVAILABLE");
   }
 
+  trace.printer = printer.name;
+  traceStep(trace, "printer_found", true, {
+    requestedPrinter,
+    printerName: printer.name,
+    resolvedBy,
+  });
+
   if (!payload.html && typeof payload.text !== "string") {
+    traceStep(trace, "content_missing", false);
+    finishPrintTrace(trace, "failure", { message: "PRINT_CONTENT_MISSING" });
     throw createHttpError(400, "PRINT_CONTENT_MISSING");
   }
 
@@ -913,6 +1057,7 @@ async function printLocalPayload(payload = {}) {
     paperWidth: isThermal ? Number(paperSize.replace("mm", "")) : undefined,
     copies: payload.copies,
     silent: payload.silent !== false,
+    trace,
   };
 
   startIsolatedPrintJob(printPayload, {
@@ -934,6 +1079,10 @@ async function printLocalPayload(payload = {}) {
     paperSize,
     status: "accepted",
   };
+  traceStep(trace, "job_accepted", true, {
+    printerName: printer.name,
+    silent: printPayload.silent,
+  });
 
   return {
     success: true,
@@ -977,7 +1126,10 @@ function rememberPrintRequest(signature) {
 
 function startIsolatedPrintJob(printPayload, context = {}) {
   runIsolatedPrintJob(printPayload)
-    .then(() => {
+    .then((result = {}) => {
+      if (result.trace) {
+        savePrintDiagnostic(result.trace);
+      }
       localBridgeStats.lastPrint = {
         ...localBridgeStats.lastPrint,
         ...context,
@@ -987,6 +1139,9 @@ function startIsolatedPrintJob(printPayload, context = {}) {
       logPrint("info", "local_print_worker_success", context);
     })
     .catch((error) => {
+      if (error.trace) {
+        savePrintDiagnostic(error.trace);
+      }
       localBridgeStats.lastPrint = {
         ...localBridgeStats.lastPrint,
         ...context,
@@ -1039,7 +1194,15 @@ function runIsolatedPrintJob(printPayload) {
       settled = true;
       worker.kill();
       cleanupPrintJobFiles(jobPath, resultPath);
-      reject(new Error("PRINT_TIMEOUT"));
+      const timeoutError = new Error("PRINT_TIMEOUT");
+      if (printPayload.trace) {
+        traceStep(printPayload.trace, "worker_timeout", false, {
+          timeoutMs: PRINT_TIMEOUT_MS,
+        });
+        finishPrintTrace(printPayload.trace, "failure", { error: timeoutError });
+        timeoutError.trace = printPayload.trace;
+      }
+      reject(timeoutError);
     }, PRINT_TIMEOUT_MS);
 
     worker.on("error", (error) => {
@@ -1050,6 +1213,11 @@ function runIsolatedPrintJob(printPayload) {
       settled = true;
       clearTimeout(timeout);
       cleanupPrintJobFiles(jobPath, resultPath);
+      if (printPayload.trace) {
+        traceStep(printPayload.trace, "worker_spawn_error", false, { error });
+        finishPrintTrace(printPayload.trace, "failure", { error });
+        error.trace = printPayload.trace;
+      }
       reject(error);
     });
 
@@ -1066,11 +1234,16 @@ function runIsolatedPrintJob(printPayload) {
         cleanupPrintJobFiles(jobPath, resultPath);
 
         if (code === 0 && result.success) {
+          if (result.trace) {
+            savePrintDiagnostic(result.trace);
+          }
           resolve(result);
           return;
         }
 
-        reject(new Error(result.error || `PRINT_WORKER_EXIT_${code}`));
+        const workerError = new Error(result.error || `PRINT_WORKER_EXIT_${code}`);
+        workerError.trace = result.trace || null;
+        reject(workerError);
       } catch (error) {
         cleanupPrintJobFiles(jobPath, resultPath);
         reject(error);
@@ -1099,16 +1272,29 @@ async function runLocalPrintWorker() {
     }
 
     const job = JSON.parse(fs.readFileSync(jobPath, "utf8"));
-    await printHtml(job.payload || {});
-    fs.writeFileSync(job.resultPath, JSON.stringify({ success: true }), "utf8");
+    const payload = job.payload || {};
+    const trace = payload.trace || createPrintTrace("local_print_worker", {
+      printer: payload.printerName || "",
+    });
+    traceStep(trace, "worker_started", true, {
+      pid: process.pid,
+      printerName: payload.printerName || "",
+    });
+    await printHtml(payload, trace);
+    finishPrintTrace(trace, "success");
+    fs.writeFileSync(job.resultPath, JSON.stringify({ success: true, trace }), "utf8");
     app.exit(0);
   } catch (error) {
     try {
       const job = jobPath && fs.existsSync(jobPath) ? JSON.parse(fs.readFileSync(jobPath, "utf8")) : {};
+      const trace = job.payload?.trace || createPrintTrace("local_print_worker_error");
+      traceStep(trace, "worker_error", false, { error });
+      finishPrintTrace(trace, "failure", { error });
       if (job.resultPath) {
         fs.writeFileSync(job.resultPath, JSON.stringify({
           success: false,
           error: error.message || "PRINT_WORKER_FAILED",
+          trace,
         }), "utf8");
       }
     } catch {
@@ -1119,16 +1305,26 @@ async function runLocalPrintWorker() {
   }
 }
 
-function printWebContents(webContents, options) {
+function printWebContents(webContents, options, trace) {
   return new Promise((resolve, reject) => {
     let settled = false;
+    const startedAt = Date.now();
+    traceStep(trace, "webcontents_print_started", true, {
+      printerName: options.deviceName || "",
+      silent: options.silent,
+    });
     const timeout = setTimeout(() => {
       if (settled) {
         return;
       }
 
       settled = true;
-      reject(new Error("PRINT_TIMEOUT"));
+      const timeoutError = new Error("PRINT_TIMEOUT");
+      traceStep(trace, "webcontents_print_timeout", false, {
+        printerName: options.deviceName || "",
+        durationMs: Date.now() - startedAt,
+      });
+      reject(timeoutError);
     }, PRINT_TIMEOUT_MS);
 
     webContents.print(options, (success, failureReason) => {
@@ -1138,13 +1334,26 @@ function printWebContents(webContents, options) {
 
       settled = true;
       clearTimeout(timeout);
+      const callback = {
+        success: Boolean(success),
+        failureReason: failureReason || "",
+        printerName: options.deviceName || "",
+        silent: options.silent,
+        durationMs: Date.now() - startedAt,
+      };
+      if (trace) {
+        trace.callback = callback;
+      }
+      traceStep(trace, "electron_callback_received", Boolean(success), callback);
 
       if (success) {
-        resolve({ success: true });
+        resolve({ success: true, callback });
         return;
       }
 
-      reject(new Error(failureReason || "PRINT_FAILED"));
+      const printError = new Error(failureReason || "PRINT_FAILED");
+      printError.callback = callback;
+      reject(printError);
     });
   });
 }
@@ -1173,26 +1382,80 @@ function createPrintWindow() {
   return printWindow;
 }
 
-async function printHtml(payload) {
+async function validatePrinterForWebContents(webContents, deviceName, trace) {
+  traceStep(trace, "windows_printers_lookup_start", true, {
+    deviceName,
+  });
+  const printers = await webContents.getPrintersAsync();
+  const printerNames = printers.map((printer) => printer.name);
+  const foundPrinter = printers.find((printer) => printer.name === deviceName);
+
+  if (!foundPrinter) {
+    traceStep(trace, "printer_not_found", false, {
+      deviceName,
+      foundPrinters: printerNames,
+    });
+    throw new Error("PRINTER_NOT_FOUND");
+  }
+
+  traceStep(trace, "printer_found", true, {
+    deviceName,
+    printerName: foundPrinter.name,
+    isDefault: Boolean(foundPrinter.isDefault),
+    status: foundPrinter.status ?? null,
+  });
+  return foundPrinter;
+}
+
+async function printHtml(payload, trace = null) {
   const printContext = getPrintPayloadSummary(payload, "html");
   logPrint("info", "html_print_start", printContext);
+  traceStep(trace, "browser_window_create_start", true, printContext);
   const printWindow = createPrintWindow();
 
   try {
     const html = buildPrintDocument(payload);
+    traceStep(trace, "browser_window_created", true, {
+      width: 900,
+      height: 700,
+      show: false,
+    });
     await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+    traceStep(trace, "html_loaded", true, {
+      htmlLength: html.length,
+    });
 
-    await printWebContents(printWindow.webContents, {
+    await validatePrinterForWebContents(printWindow.webContents, payload.printerName, trace);
+
+    const baseOptions = {
       silent: payload.silent !== false,
       deviceName: payload.printerName,
       printBackground: true,
       copies: Math.max(1, Number(payload.copies || 1)),
       margins: { marginType: "none" },
-    });
+    };
+
+    try {
+      await printWebContents(printWindow.webContents, baseOptions, trace);
+    } catch (error) {
+      if (baseOptions.silent) {
+        traceStep(trace, "silent_print_failed_trying_dialog", false, {
+          failureReason: error.message,
+          callback: error.callback || null,
+        });
+        await printWebContents(printWindow.webContents, {
+          ...baseOptions,
+          silent: false,
+        }, trace);
+      } else {
+        throw error;
+      }
+    }
 
     logPrint("info", "html_print_success", printContext);
     return { success: true };
   } catch (error) {
+    traceStep(trace, "html_print_failure", false, { error });
     logPrint("error", "html_print_failure", { ...printContext, error });
     throw error;
   } finally {
@@ -1231,6 +1494,81 @@ async function printPdf(payload) {
     if (!printWindow.isDestroyed()) {
       printWindow.close();
     }
+  }
+}
+
+async function printRawTestPayload(payload = {}) {
+  const requestedPrinter = payload.printer || payload.printerName || readLocalSettings().preferredPrinter || "";
+  const trace = createPrintTrace("raw_print_test", {
+    requestedPrinter,
+  });
+
+  try {
+    traceStep(trace, "json_validated", true, {
+      requestedPrinter,
+    });
+    const { printer, resolvedBy } = await resolveLocalPrinter(requestedPrinter);
+
+    if (!printer) {
+      traceStep(trace, "printer_not_found", false, {
+        requestedPrinter,
+        foundPrinters: cachedPrinters.map((cachedPrinter) => cachedPrinter.name),
+      });
+      finishPrintTrace(trace, "failure", { message: "PRINTER_NOT_FOUND" });
+      throw createHttpError(404, "PRINTER_NOT_FOUND");
+    }
+
+    trace.printer = printer.name;
+    traceStep(trace, "printer_found", true, {
+      requestedPrinter,
+      printerName: printer.name,
+      resolvedBy,
+    });
+
+    const printWindow = new BrowserWindow({
+      width: 300,
+      height: 600,
+      show: false,
+    });
+
+    printWindows.add(printWindow);
+    attachWindowDiagnostics(printWindow, "raw-test");
+    traceStep(trace, "browser_window_created", true, {
+      width: 300,
+      height: 600,
+      show: false,
+    });
+
+    try {
+      const html = "<!doctype html><html><body>TESTE DALMAGO<br>123<br>ABC</body></html>";
+      await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+      traceStep(trace, "html_loaded", true, {
+        htmlLength: html.length,
+      });
+      await validatePrinterForWebContents(printWindow.webContents, printer.name, trace);
+      await printWebContents(printWindow.webContents, {
+        silent: false,
+        deviceName: printer.name,
+      }, trace);
+      finishPrintTrace(trace, "success");
+      return {
+        success: true,
+        jobId: trace.jobId,
+        printer: printer.name,
+        resolvedBy,
+        trace,
+      };
+    } finally {
+      if (!printWindow.isDestroyed()) {
+        printWindow.close();
+      }
+      printWindows.delete(printWindow);
+      traceStep(trace, "browser_window_closed", true);
+    }
+  } catch (error) {
+    traceStep(trace, "raw_print_test_failure", false, { error });
+    finishPrintTrace(trace, "failure", { error });
+    throw error;
   }
 }
 
@@ -1348,6 +1686,7 @@ async function getLocalBridgeStatus() {
     settings,
     diagnostics: {
       ...localBridgeStats,
+      lastPrintDiagnostic,
       update: updateStatus,
     },
   };
@@ -1398,6 +1737,23 @@ async function handleLocalBridgeRequest(request, response) {
       const result = await printLocalPayload(payload);
       recordLocalRequest(request, route, 200);
       writeJsonResponse(response, 200, result);
+      return;
+    }
+
+    if (request.method === "POST" && route === "/print-raw-test") {
+      const payload = await readRequestJson(request);
+      const result = await printRawTestPayload(payload);
+      recordLocalRequest(request, route, 200);
+      writeJsonResponse(response, 200, result);
+      return;
+    }
+
+    if (request.method === "GET" && route === "/last-print-log") {
+      recordLocalRequest(request, route, 200);
+      writeJsonResponse(response, 200, {
+        lastJob: lastPrintDiagnostic,
+        jobs: printDiagnosticHistory.slice(-10),
+      });
       return;
     }
 
@@ -1673,6 +2029,11 @@ ipcMain.handle("print-agent:get-local-bridge-status", getLocalBridgeStatus);
 ipcMain.handle("print-agent:get-local-settings", readLocalSettings);
 ipcMain.handle("print-agent:update-local-settings", (_event, payload) => writeLocalSettings(payload || {}));
 ipcMain.handle("print-agent:print-local", (_event, payload) => printLocalPayload(payload || {}));
+ipcMain.handle("print-agent:print-raw-test", (_event, payload) => printRawTestPayload(payload || {}));
+ipcMain.handle("print-agent:get-last-print-log", () => ({
+  lastJob: lastPrintDiagnostic,
+  jobs: printDiagnosticHistory.slice(-10),
+}));
 ipcMain.handle("print-agent:check-for-updates", checkForUpdatesFromRenderer);
 ipcMain.handle("print-agent:install-update", installDownloadedUpdate);
 ipcMain.handle("print-agent:get-app-status", getAppStatus);

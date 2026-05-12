@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld("printAgent", {
   getLocalSettings: () => ipcRenderer.invoke("print-agent:get-local-settings"),
   updateLocalSettings: (payload) => ipcRenderer.invoke("print-agent:update-local-settings", payload),
   printLocal: (payload) => ipcRenderer.invoke("print-agent:print-local", payload),
+  printRawTest: (payload) => ipcRenderer.invoke("print-agent:print-raw-test", payload),
+  getLastPrintLog: () => ipcRenderer.invoke("print-agent:get-last-print-log"),
   checkForUpdates: () => ipcRenderer.invoke("print-agent:check-for-updates"),
   installUpdate: () => ipcRenderer.invoke("print-agent:install-update"),
   getAppStatus: () => ipcRenderer.invoke("print-agent:get-app-status"),

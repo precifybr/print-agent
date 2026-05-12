@@ -1,6 +1,6 @@
 {
   "name": "print-agent",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Aplicativo desktop de ponte local para impressao via localhost.",
   "main": "main.js",
   "private": true,
@@ -9,6 +9,8 @@
     "pack": "electron-builder --dir",
     "dist:win": "electron-builder --win nsis",
     "release:win": "electron-builder --win nsis --publish always",
+    "release": "powershell -ExecutionPolicy Bypass -File scripts/release.ps1",
+    "sync": "powershell -ExecutionPolicy Bypass -File scripts/release.ps1",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
