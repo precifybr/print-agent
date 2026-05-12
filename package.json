@@ -1,6 +1,6 @@
 {
   "name": "print-agent",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Aplicativo desktop de ponte local para impressao via localhost.",
   "main": "main.js",
   "private": true,
@@ -45,7 +45,9 @@
       "main.js",
       "preload.js",
       "index.html",
-      "package.json"
+      "package.json",
+      "build/icon.png",
+      "build/icon.ico"
     ],
     "win": {
       "icon": "build/icon.ico",
@@ -65,8 +67,9 @@
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "oneClick": false,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
+      "perMachine": true,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Print Assistant",

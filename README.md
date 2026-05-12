@@ -61,6 +61,8 @@ Printer resolution order:
 
 Paper size can be configured in the Electron UI as `58mm`, `80mm`, or `A4`.
 
+Thermal printers (`58mm` and `80mm`) use the native Windows print dialog by default because Electron silent print is unreliable on several thermal drivers. A4 jobs may try silent printing first and automatically fall back to the native dialog when Electron returns an error or timeout.
+
 ### Desktop app
 
 The desktop UI is intentionally minimal for store operators:
@@ -69,6 +71,8 @@ The desktop UI is intentionally minimal for store operators:
 - Default printer selector
 - Paper size selector
 - Test print button
+- Quick diagnostic button
+- Last print result
 - Discreet update check button
 
 Advanced details stay in local logs and the localhost API, not on the operator screen.
@@ -133,8 +137,10 @@ Returns the latest diagnostic job, including checkpoints, selected printer, Elec
 - Print payloads are capped at 2 MB.
 - Duplicate prints with the same content/printer within a short window are rejected.
 - Logs are written under the app user data directory and avoid storing full HTML content.
+- Production logs are split into `app.log`, `print.log`, and `updater.log`, each rotating at 5 MB.
 - Print diagnostics keep the latest 100 jobs and are capped at 5 MB.
 - Auto-update is prepared with `electron-updater` and GitHub Releases provider `precifybr/print-agent`.
+- The Windows installer uses a fixed app id and a fixed install path so upgrades replace the existing installation while preserving AppData settings.
 
 ## Installer name
 

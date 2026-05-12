@@ -3,7 +3,7 @@ const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
 const { createHash, randomUUID } = require("node:crypto");
-const { spawn } = require("node:child_process");
+const { execFile, spawn } = require("node:child_process");
 const log = require("electron-log/main");
 const { autoUpdater } = require("electron-updater");
 const {
@@ -20,13 +20,14 @@ const isDevelopment = !app.isPackaged || process.env.NODE_ENV === "development";
 const startupMode = process.argv.includes("--hidden") || process.argv.includes("--start-minimized")
   ? "hidden"
   : "normal";
-const LOG_MAX_SIZE_BYTES = 2 * 1024 * 1024;
+const LOG_MAX_SIZE_BYTES = 5 * 1024 * 1024;
 const LOG_ARCHIVE_COUNT = 3;
 const PRINT_TIMEOUT_MS = 30000;
+const PRINT_DIALOG_TIMEOUT_MS = 120000;
 const PRINT_DIAGNOSTIC_MAX_JOBS = 100;
 const PRINT_DIAGNOSTIC_MAX_BYTES = 5 * 1024 * 1024;
 const LOG_LEVELS = new Set(["error", "warn", "info", "verbose", "debug", "silly"]);
-const LOG_CATEGORIES = new Set(["app", "print", "error"]);
+const LOG_CATEGORIES = new Set(["app", "print", "updater"]);
 const LOCAL_BRIDGE_HOST = "127.0.0.1";
 const LOCAL_BRIDGE_PORT = 18181;
 const LOCAL_SETTINGS_FILE = "local-bridge-settings.json";
@@ -39,17 +40,19 @@ const UPDATE_CHECK_ENABLED = process.env.PRINT_ASSISTANT_ENABLE_UPDATES === "1";
 let mainWindow;
 let tray;
 let isQuitting = false;
+let shutdownCleanupDone = false;
 let lastPrinterSnapshot = "";
 const printWindows = new Set();
 let appLogger;
 let printLogger;
-let errorLogger;
+let updaterLogger;
 let localBridgeServer;
 let localBridgeListening = false;
 let cachedPrinters = [];
 let updateStatus = getDefaultUpdateStatus();
 let lastPrintDiagnostic = null;
 let printDiagnosticHistory = [];
+let printQueue = Promise.resolve();
 const recentPrintRequests = new Map();
 const localBridgeStats = {
   startedAt: new Date().toISOString(),
@@ -63,7 +66,7 @@ const isLocalPrintWorker = process.argv.includes(LOCAL_PRINT_WORKER_FLAG);
 const gotSingleInstanceLock = isLocalPrintWorker || app.requestSingleInstanceLock();
 
 if (!gotSingleInstanceLock) {
-  app.quit();
+  app.exit(0);
 } else {
   initializeLogging();
   loadPrintDiagnostics();
@@ -74,8 +77,11 @@ if (!gotSingleInstanceLock) {
     startupMode,
   });
 
-  app.on("second-instance", (_event, _commandLine, workingDirectory) => {
-    logApp("warn", "second_instance_detected", { workingDirectory });
+  app.on("second-instance", (_event, commandLine, workingDirectory) => {
+    logApp("warn", "second_instance_detected", {
+      workingDirectory,
+      commandLine: commandLine.join(" "),
+    });
     restoreMainWindow();
   });
 }
@@ -83,7 +89,7 @@ if (!gotSingleInstanceLock) {
 function initializeLogging() {
   appLogger = createFileLogger("app", "app.log");
   printLogger = createFileLogger("print", "print.log");
-  errorLogger = createFileLogger("error", "error.log");
+  updaterLogger = createFileLogger("updater", "updater.log");
 }
 
 function createFileLogger(logId, fileName) {
@@ -224,12 +230,14 @@ function safeRename(sourcePath, targetPath) {
 
     fs.renameSync(sourcePath, targetPath);
   } catch (error) {
-    errorLogger.error(formatLogMessage("error", "log_rotation_failed", { sourcePath, targetPath, error }));
+    if (appLogger) {
+      appLogger.error(formatLogMessage("app", "log_rotation_failed", { sourcePath, targetPath, error }));
+    }
   }
 }
 
 function writeDiagnosticLog(category, level, event, details = {}) {
-  if (!appLogger || !printLogger || !errorLogger) {
+  if (!appLogger || !printLogger || !updaterLogger) {
     return;
   }
 
@@ -237,12 +245,16 @@ function writeDiagnosticLog(category, level, event, details = {}) {
   const safeLevel = LOG_LEVELS.has(level) ? level : "info";
   const safeEvent = String(event || "event").replace(/[^a-z0-9_.:-]/gi, "_");
   const message = formatLogMessage(safeCategory, safeEvent, details);
-  const targetLogger = safeCategory === "print" ? printLogger : safeCategory === "error" ? errorLogger : appLogger;
+  const targetLogger = safeCategory === "print"
+    ? printLogger
+    : safeCategory === "updater"
+      ? updaterLogger
+      : appLogger;
 
   targetLogger[safeLevel](message);
 
-  if (safeLevel === "error" && safeCategory !== "error") {
-    errorLogger.error(message);
+  if (safeLevel === "error" && safeCategory !== "app") {
+    appLogger.error(message);
   }
 }
 
@@ -254,8 +266,12 @@ function logPrint(level, event, details = {}) {
   writeDiagnosticLog("print", level, event, details);
 }
 
+function logUpdater(level, event, details = {}) {
+  writeDiagnosticLog("updater", level, event, details);
+}
+
 function logError(event, details = {}) {
-  writeDiagnosticLog("error", "error", event, details);
+  writeDiagnosticLog("app", "error", event, details);
 }
 
 function loadPrintDiagnostics() {
@@ -312,6 +328,7 @@ function createPrintTrace(type, details = {}) {
     durationMs: 0,
     status: "running",
     steps: [],
+    callbacks: [],
     callback: null,
     error: null,
   };
@@ -469,13 +486,13 @@ function installProcessCrashHandlers() {
 }
 
 function createTrayIcon() {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
-    <rect width="32" height="32" rx="7" fill="#111827"/>
-    <path fill="#ffffff" d="M9 7h14v7H9z"/>
-    <path fill="#ffffff" d="M8 14h16a3 3 0 0 1 3 3v6h-5v3H10v-3H5v-6a3 3 0 0 1 3-3Zm5 8v2h6v-2Zm10-5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z"/>
-  </svg>`;
+  const iconPath = path.join(__dirname, "build", "icon.png");
 
-  return nativeImage.createFromDataURL(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`);
+  if (fs.existsSync(iconPath)) {
+    return nativeImage.createFromPath(iconPath);
+  }
+
+  return nativeImage.createEmpty();
 }
 
 function createTray() {
@@ -571,9 +588,27 @@ function showStatusDialog() {
 
 function quitFromTray() {
   logApp("info", "tray_quit_requested");
+  requestAppQuit("tray");
+}
+
+function requestAppQuit(source = "app") {
+  if (isQuitting) {
+    return;
+  }
+
+  logApp("info", "app_quit_requested", { source });
   isQuitting = true;
-  sendRendererCommand("shutdown");
+  cleanupBeforeQuit();
   app.quit();
+
+  setTimeout(() => {
+    if (!app.isReady()) {
+      return;
+    }
+
+    logApp("warn", "app_quit_force_exit");
+    app.exit(0);
+  }, 3000).unref();
 }
 
 function configureAutoStart() {
@@ -628,6 +663,7 @@ function createWindow(options = {}) {
     width: 400,
     height: 600,
     show: options.show !== false,
+    icon: path.join(__dirname, "build", "icon.png"),
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -1056,7 +1092,7 @@ async function printLocalPayload(payload = {}) {
     paperSize,
     paperWidth: isThermal ? Number(paperSize.replace("mm", "")) : undefined,
     copies: payload.copies,
-    silent: payload.silent !== false,
+    silent: isThermal ? false : payload.silent !== false,
     trace,
   };
 
@@ -1082,6 +1118,7 @@ async function printLocalPayload(payload = {}) {
   traceStep(trace, "job_accepted", true, {
     printerName: printer.name,
     silent: printPayload.silent,
+    thermalDialogMode: isThermal,
   });
 
   return {
@@ -1125,7 +1162,13 @@ function rememberPrintRequest(signature) {
 }
 
 function startIsolatedPrintJob(printPayload, context = {}) {
-  runIsolatedPrintJob(printPayload)
+  printQueue = printQueue
+    .catch(() => {
+      // Keep the print queue alive after a failed job.
+    })
+    .then(() => runIsolatedPrintJob(printPayload));
+
+  printQueue
     .then((result = {}) => {
       if (result.trace) {
         savePrintDiagnostic(result.trace);
@@ -1186,6 +1229,7 @@ function runIsolatedPrintJob(printPayload) {
       detached: false,
     });
 
+    const timeoutMs = printPayload.silent === false ? PRINT_DIALOG_TIMEOUT_MS : PRINT_TIMEOUT_MS;
     const timeout = setTimeout(() => {
       if (settled) {
         return;
@@ -1197,13 +1241,13 @@ function runIsolatedPrintJob(printPayload) {
       const timeoutError = new Error("PRINT_TIMEOUT");
       if (printPayload.trace) {
         traceStep(printPayload.trace, "worker_timeout", false, {
-          timeoutMs: PRINT_TIMEOUT_MS,
+          timeoutMs,
         });
         finishPrintTrace(printPayload.trace, "failure", { error: timeoutError });
         timeoutError.trace = printPayload.trace;
       }
       reject(timeoutError);
-    }, PRINT_TIMEOUT_MS);
+    }, timeoutMs);
 
     worker.on("error", (error) => {
       if (settled) {
@@ -1309,6 +1353,7 @@ function printWebContents(webContents, options, trace) {
   return new Promise((resolve, reject) => {
     let settled = false;
     const startedAt = Date.now();
+    const timeoutMs = options.silent ? PRINT_TIMEOUT_MS : PRINT_DIALOG_TIMEOUT_MS;
     traceStep(trace, "webcontents_print_started", true, {
       printerName: options.deviceName || "",
       silent: options.silent,
@@ -1323,9 +1368,10 @@ function printWebContents(webContents, options, trace) {
       traceStep(trace, "webcontents_print_timeout", false, {
         printerName: options.deviceName || "",
         durationMs: Date.now() - startedAt,
+        timeoutMs,
       });
       reject(timeoutError);
-    }, PRINT_TIMEOUT_MS);
+    }, timeoutMs);
 
     webContents.print(options, (success, failureReason) => {
       if (settled) {
@@ -1343,6 +1389,8 @@ function printWebContents(webContents, options, trace) {
       };
       if (trace) {
         trace.callback = callback;
+        trace.callbacks = Array.isArray(trace.callbacks) ? trace.callbacks : [];
+        trace.callbacks.push(callback);
       }
       traceStep(trace, "electron_callback_received", Boolean(success), callback);
 
@@ -1407,62 +1455,142 @@ async function validatePrinterForWebContents(webContents, deviceName, trace) {
   return foundPrinter;
 }
 
+function checkWindowsSpooler(trace) {
+  if (process.platform !== "win32") {
+    traceStep(trace, "spooler_status", true, {
+      platform: process.platform,
+      status: "not_applicable",
+    });
+    return Promise.resolve("not_applicable");
+  }
+
+  return new Promise((resolve, reject) => {
+    const startedAt = Date.now();
+
+    execFile("powershell.exe", [
+      "-NoProfile",
+      "-ExecutionPolicy",
+      "Bypass",
+      "-Command",
+      "(Get-Service -Name Spooler).Status.ToString()",
+    ], {
+      timeout: 5000,
+      windowsHide: true,
+    }, (error, stdout) => {
+      const status = String(stdout || "").trim();
+
+      if (error) {
+        traceStep(trace, "spooler_status", false, {
+          durationMs: Date.now() - startedAt,
+          error,
+        });
+        reject(new Error("SPOOLER_STATUS_FAILED"));
+        return;
+      }
+
+      traceStep(trace, "spooler_status", status === "Running", {
+        status,
+        durationMs: Date.now() - startedAt,
+      });
+
+      if (status !== "Running") {
+        reject(new Error("SPOOLER_NOT_RUNNING"));
+        return;
+      }
+
+      resolve(status);
+    });
+  });
+}
+
+function isThermalPrintPayload(payload = {}) {
+  return payload.type === "thermal" || ["58mm", "80mm"].includes(payload.paperSize);
+}
+
+function buildElectronPrintOptions(payload = {}, silent = false) {
+  const options = {
+    silent,
+    deviceName: payload.printerName,
+    copies: Math.max(1, Number(payload.copies || 1)),
+  };
+
+  if (!isThermalPrintPayload(payload)) {
+    options.printBackground = true;
+    options.margins = { marginType: "none" };
+  }
+
+  return options;
+}
+
 async function printHtml(payload, trace = null) {
   const printContext = getPrintPayloadSummary(payload, "html");
   logPrint("info", "html_print_start", printContext);
-  traceStep(trace, "browser_window_create_start", true, printContext);
-  const printWindow = createPrintWindow();
+  const html = buildPrintDocument(payload);
+  const isThermal = isThermalPrintPayload(payload);
+  const startsWithDialog = isThermal || payload.silent === false;
+  const attempts = startsWithDialog ? [false] : [true, false];
 
-  try {
-    const html = buildPrintDocument(payload);
+  traceStep(trace, "print_strategy_selected", true, {
+    isThermal,
+    startsWithDialog,
+    attempts: attempts.map((silent) => silent ? "silent" : "dialog"),
+  });
+
+  await checkWindowsSpooler(trace);
+
+  for (const silent of attempts) {
+    traceStep(trace, "browser_window_create_start", true, {
+      ...printContext,
+      silent,
+    });
+    const printWindow = createPrintWindow();
+
+    try {
     traceStep(trace, "browser_window_created", true, {
       width: 900,
       height: 700,
       show: false,
+      silent,
     });
     await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
     traceStep(trace, "html_loaded", true, {
       htmlLength: html.length,
+      silent,
     });
 
     await validatePrinterForWebContents(printWindow.webContents, payload.printerName, trace);
 
-    const baseOptions = {
-      silent: payload.silent !== false,
-      deviceName: payload.printerName,
-      printBackground: true,
-      copies: Math.max(1, Number(payload.copies || 1)),
-      margins: { marginType: "none" },
-    };
+      await printWebContents(printWindow.webContents, buildElectronPrintOptions(payload, silent), trace);
 
-    try {
-      await printWebContents(printWindow.webContents, baseOptions, trace);
+      traceStep(trace, "print_attempt_success", true, {
+        silent,
+        fallbackUsed: !silent && !startsWithDialog,
+      });
+      logPrint("info", "html_print_success", {
+        ...printContext,
+        silent,
+        fallbackUsed: !silent && !startsWithDialog,
+      });
+      return { success: true, fallbackUsed: !silent && !startsWithDialog };
     } catch (error) {
-      if (baseOptions.silent) {
-        traceStep(trace, "silent_print_failed_trying_dialog", false, {
-          failureReason: error.message,
-          callback: error.callback || null,
-        });
-        await printWebContents(printWindow.webContents, {
-          ...baseOptions,
-          silent: false,
-        }, trace);
-      } else {
+      traceStep(trace, silent ? "silent_print_failed_trying_dialog" : "dialog_print_failed", false, {
+        failureReason: error.message,
+        callback: error.callback || null,
+      });
+
+      if (!silent) {
+        traceStep(trace, "html_print_failure", false, { error });
+        logPrint("error", "html_print_failure", { ...printContext, error });
         throw error;
       }
-    }
-
-    logPrint("info", "html_print_success", printContext);
-    return { success: true };
-  } catch (error) {
-    traceStep(trace, "html_print_failure", false, { error });
-    logPrint("error", "html_print_failure", { ...printContext, error });
-    throw error;
-  } finally {
-    if (!printWindow.isDestroyed()) {
-      printWindow.close();
+    } finally {
+      if (!printWindow.isDestroyed()) {
+        printWindow.destroy();
+      }
     }
   }
+
+  throw new Error("PRINT_FAILED");
 }
 
 async function printPdf(payload) {
@@ -1545,6 +1673,7 @@ async function printRawTestPayload(payload = {}) {
       traceStep(trace, "html_loaded", true, {
         htmlLength: html.length,
       });
+      await checkWindowsSpooler(trace);
       await validatePrinterForWebContents(printWindow.webContents, printer.name, trace);
       await printWebContents(printWindow.webContents, {
         silent: false,
@@ -1810,23 +1939,35 @@ function startLocalBridgeServer() {
 
 function stopLocalBridgeServer() {
   if (!localBridgeServer) {
+    localBridgeListening = false;
     return;
   }
 
-  localBridgeServer.close((error) => {
-    localBridgeListening = false;
-
-    if (error) {
-      logError("local_bridge_server_stop_failed", { error });
-      return;
-    }
-
-    logApp("info", "local_bridge_server_stopped");
-  });
+  const server = localBridgeServer;
   localBridgeServer = null;
+  localBridgeListening = false;
+
+  try {
+    server.close((error) => {
+      if (error) {
+        logError("local_bridge_server_stop_failed", { error });
+        return;
+      }
+
+      logApp("info", "local_bridge_server_stopped");
+    });
+    server.closeAllConnections?.();
+  } catch (error) {
+    logError("local_bridge_server_stop_exception", { error });
+  }
 }
 
 function cleanupBeforeQuit() {
+  if (shutdownCleanupDone) {
+    return;
+  }
+
+  shutdownCleanupDone = true;
   logApp("info", "app_shutdown_started", {
     activePrintWindows: printWindows.size,
   });
@@ -1836,9 +1977,23 @@ function cleanupBeforeQuit() {
 
   for (const printWindow of printWindows) {
     if (!printWindow.isDestroyed()) {
-      printWindow.close();
+      printWindow.destroy();
     }
   }
+
+  printWindows.clear();
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.destroy();
+    mainWindow = null;
+  }
+
+  if (tray) {
+    tray.destroy();
+    tray = null;
+  }
+
+  logApp("info", "app_shutdown_cleanup_complete");
 }
 
 function writeRendererLog(payload = {}) {
@@ -1869,7 +2024,7 @@ function getDefaultUpdateStatus() {
 }
 
 function configureAutoUpdate() {
-  autoUpdater.logger = appLogger;
+  autoUpdater.logger = updaterLogger;
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
 
@@ -1880,7 +2035,7 @@ function configureAutoUpdate() {
       error: "",
       lastCheckedAt: new Date().toISOString(),
     };
-    logApp("info", "auto_update_checking");
+    logUpdater("info", "auto_update_checking");
   });
 
   autoUpdater.on("update-available", (info) => {
@@ -1890,14 +2045,14 @@ function configureAutoUpdate() {
       available: true,
       version: info?.version || "",
     };
-    logApp("info", "auto_update_available", { version: info?.version || "" });
+    logUpdater("info", "auto_update_available", { version: info?.version || "" });
 
     autoUpdater.downloadUpdate().catch((error) => {
       updateStatus = {
         ...updateStatus,
         error: error.message || "AUTO_UPDATE_DOWNLOAD_FAILED",
       };
-      logError("auto_update_download_failed", { error });
+      logUpdater("error", "auto_update_download_failed", { error });
     });
   });
 
@@ -1908,7 +2063,7 @@ function configureAutoUpdate() {
       available: false,
       downloaded: false,
     };
-    logApp("info", "auto_update_not_available");
+    logUpdater("info", "auto_update_not_available");
   });
 
   autoUpdater.on("update-downloaded", (info) => {
@@ -1919,7 +2074,7 @@ function configureAutoUpdate() {
       downloaded: true,
       version: info?.version || updateStatus.version,
     };
-    logApp("info", "auto_update_downloaded", { version: info?.version || "" });
+    logUpdater("info", "auto_update_downloaded", { version: info?.version || "" });
 
     if (!mainWindow || mainWindow.isDestroyed()) {
       return;
@@ -1935,11 +2090,11 @@ function configureAutoUpdate() {
       cancelId: 1,
     }).then(({ response }) => {
       if (response === 0) {
-        logApp("info", "auto_update_install_on_quit_selected");
+        logUpdater("info", "auto_update_install_on_quit_selected");
         autoUpdater.autoInstallOnAppQuit = true;
       }
     }).catch((error) => {
-      logError("auto_update_prompt_failed", { error });
+      logUpdater("error", "auto_update_prompt_failed", { error });
     });
   });
 
@@ -1949,7 +2104,7 @@ function configureAutoUpdate() {
       checking: false,
       error: error.message || "AUTO_UPDATE_ERROR",
     };
-    logError("auto_update_error", { error });
+    logUpdater("error", "auto_update_error", { error });
   });
 }
 
@@ -1961,7 +2116,7 @@ function maybeCheckForUpdates() {
   };
 
   if (!app.isPackaged || !updateStatus.enabled) {
-    logApp("info", "auto_update_check_skipped", {
+    logUpdater("info", "auto_update_check_skipped", {
       isPackaged: app.isPackaged,
       enabled: updateStatus.enabled,
     });
@@ -1974,7 +2129,7 @@ function maybeCheckForUpdates() {
       checking: false,
       error: error.message || "AUTO_UPDATE_CHECK_FAILED",
     };
-    logError("auto_update_check_failed", { error });
+    logUpdater("error", "auto_update_check_failed", { error });
   });
 }
 
@@ -1994,7 +2149,7 @@ async function checkForUpdatesFromRenderer() {
       available: false,
       downloaded: false,
     };
-    logApp("info", "auto_update_renderer_check_skipped_dev");
+    logUpdater("info", "auto_update_renderer_check_skipped_dev");
     return updateStatus;
   }
 
@@ -2007,7 +2162,7 @@ async function checkForUpdatesFromRenderer() {
       checking: false,
       error: error.message || "AUTO_UPDATE_CHECK_FAILED",
     };
-    logError("auto_update_renderer_check_failed", { error });
+    logUpdater("error", "auto_update_renderer_check_failed", { error });
     return updateStatus;
   }
 }
@@ -2017,7 +2172,7 @@ function installDownloadedUpdate() {
     throw new Error("UPDATE_NOT_DOWNLOADED");
   }
 
-  logApp("info", "auto_update_install_requested");
+  logUpdater("info", "auto_update_install_requested");
   autoUpdater.quitAndInstall(false, true);
   return { success: true };
 }
@@ -2039,42 +2194,44 @@ ipcMain.handle("print-agent:install-update", installDownloadedUpdate);
 ipcMain.handle("print-agent:get-app-status", getAppStatus);
 ipcMain.handle("print-agent:write-log", (_event, payload) => writeRendererLog(payload || {}));
 
-app.whenReady().then(() => {
-  if (isLocalPrintWorker) {
-    return runLocalPrintWorker();
-  }
+if (gotSingleInstanceLock) {
+  app.whenReady().then(() => {
+    if (isLocalPrintWorker) {
+      return runLocalPrintWorker();
+    }
 
-  logApp("info", "app_ready", getAppStatus());
-  configureAutoUpdate();
-  configureAutoStart();
-  createTray();
-  createWindow({ show: startupMode !== "hidden" });
-  startLocalBridgeServer();
-  maybeCheckForUpdates();
-  logApp("info", "app_startup_complete", getAppStatus());
-}).catch((error) => {
-  logError("app_ready_failed", { error });
-});
+    logApp("info", "app_ready", getAppStatus());
+    configureAutoUpdate();
+    configureAutoStart();
+    createTray();
+    createWindow({ show: startupMode !== "hidden" });
+    startLocalBridgeServer();
+    maybeCheckForUpdates();
+    logApp("info", "app_startup_complete", getAppStatus());
+  }).catch((error) => {
+    logError("app_ready_failed", { error });
+  });
 
-app.on("before-quit", cleanupBeforeQuit);
+  app.on("before-quit", cleanupBeforeQuit);
 
-app.on("child-process-gone", (_event, details) => {
-  logError("child_process_gone", { details });
-});
+  app.on("child-process-gone", (_event, details) => {
+    logError("child_process_gone", { details });
+  });
 
-app.on("gpu-process-crashed", (_event, killed) => {
-  logError("gpu_process_crashed", { killed });
-});
+  app.on("gpu-process-crashed", (_event, killed) => {
+    logError("gpu_process_crashed", { killed });
+  });
 
-app.on("window-all-closed", () => {
-  logApp("info", "window_all_closed", { isQuitting });
+  app.on("window-all-closed", () => {
+    logApp("info", "window_all_closed", { isQuitting });
 
-  if (process.platform === "darwin" && isQuitting) {
-    app.quit();
-  }
-});
+    if (process.platform === "darwin" && isQuitting) {
+      app.quit();
+    }
+  });
 
-app.on("activate", () => {
-  logApp("info", "app_activate");
-  restoreMainWindow();
-});
+  app.on("activate", () => {
+    logApp("info", "app_activate");
+    restoreMainWindow();
+  });
+}

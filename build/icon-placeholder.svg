@@ -1,5 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
-  <rect width="256" height="256" rx="48" fill="#111827"/>
-  <path fill="#ffffff" d="M72 50h112v58H72z"/>
-  <path fill="#ffffff" d="M64 108h128c18 0 32 14 32 32v48h-40v24H72v-24H32v-48c0-18 14-32 32-32Zm40 72v16h48v-16Zm88-42a12 12 0 1 0 0 24 12 12 0 0 0 0-24Z"/>
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="142" x2="882" y1="110" y2="914" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#20352d"/>
+      <stop offset="1" stop-color="#0f1714"/>
+    </linearGradient>
+    <linearGradient id="paper" x1="318" x2="706" y1="176" y2="738" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fffaf0"/>
+      <stop offset="1" stop-color="#e9efe3"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="228" fill="url(#bg)"/>
+  <rect x="284" y="178" width="456" height="332" rx="42" fill="url(#paper)"/>
+  <rect x="218" y="408" width="588" height="324" rx="76" fill="#f7f1e3"/>
+  <rect x="292" y="642" width="440" height="224" rx="38" fill="#dce8d7"/>
+  <rect x="346" y="700" width="332" height="28" rx="14" fill="#557063"/>
+  <rect x="346" y="768" width="238" height="28" rx="14" fill="#557063"/>
+  <circle cx="714" cy="528" r="34" fill="#20352d"/>
 </svg>
