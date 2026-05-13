@@ -1853,7 +1853,29 @@ function recordLocalRequest(request, route, statusCode) {
     statusCode,
     origin: request.headers.origin || "",
   };
-  logLocalhost("info", "request", localBridgeStats.lastRequest);
+}
+
+function logHttpRequest(request, route, statusCode, startedAt) {
+  const durationMs = Math.max(0, Date.now() - startedAt);
+  const details = {
+    method: request.method,
+    route,
+    origin: request.headers.origin || "",
+    statusCode,
+    durationMs,
+  };
+
+  logLocalhost("info", "http_request", details);
+  logLocalhost("info", "http_line", {
+    line: `[HTTP] ${request.method} ${route} ${statusCode} ${durationMs}ms`,
+  });
+}
+
+function buildPrintersResponse(printers = []) {
+  return printers.map((printer) => ({
+    name: printer.name,
+    isDefault: Boolean(printer.isDefault),
+  }));
 }
 
 async function getLocalBridgeStatus() {
@@ -1891,11 +1913,13 @@ async function getLocalBridgeHealth() {
 }
 
 async function handleLocalBridgeRequest(request, response) {
+  const startedAt = Date.now();
   const url = new URL(request.url, `http://localhost:${LOCAL_BRIDGE_PORT}`);
   const route = url.pathname;
 
   if (!isLocalRequest(request)) {
     recordLocalRequest(request, route, 403);
+    logHttpRequest(request, route, 403, startedAt);
     writeJsonResponse(response, 403, {
       success: false,
       error: "LOCALHOST_ONLY",
@@ -1905,6 +1929,7 @@ async function handleLocalBridgeRequest(request, response) {
 
   if (request.method === "OPTIONS") {
     recordLocalRequest(request, route, 204);
+    logHttpRequest(request, route, 204, startedAt);
     writeJsonResponse(response, 204, {});
     return;
   }
@@ -1912,24 +1937,23 @@ async function handleLocalBridgeRequest(request, response) {
   try {
     if (request.method === "GET" && route === "/status") {
       recordLocalRequest(request, route, 200);
+      logHttpRequest(request, route, 200, startedAt);
       writeJsonResponse(response, 200, await getLocalBridgeStatus());
       return;
     }
 
     if (request.method === "GET" && route === "/health") {
       recordLocalRequest(request, route, 200);
+      logHttpRequest(request, route, 200, startedAt);
       writeJsonResponse(response, 200, await getLocalBridgeHealth());
       return;
     }
 
     if (request.method === "GET" && route === "/printers") {
-      const status = await getLocalBridgeStatus();
+      const printers = await getPrinters();
       recordLocalRequest(request, route, 200);
-      writeJsonResponse(response, 200, {
-        printers: status.printers,
-        defaultPrinter: status.defaultPrinter,
-        sectors: status.sectors,
-      });
+      logHttpRequest(request, route, 200, startedAt);
+      writeJsonResponse(response, 200, buildPrintersResponse(printers));
       return;
     }
 
@@ -1937,6 +1961,7 @@ async function handleLocalBridgeRequest(request, response) {
       const payload = await readRequestJson(request);
       const result = await printLocalPayload(payload);
       recordLocalRequest(request, route, 200);
+      logHttpRequest(request, route, 200, startedAt);
       writeJsonResponse(response, 200, result);
       return;
     }
@@ -1945,11 +1970,13 @@ async function handleLocalBridgeRequest(request, response) {
       const payload = await readRequestJson(request);
       const result = await printRawTestPayload(payload);
       recordLocalRequest(request, route, 200);
+      logHttpRequest(request, route, 200, startedAt);
       writeJsonResponse(response, 200, result);
       return;
     }
 
     recordLocalRequest(request, route, 404);
+    logHttpRequest(request, route, 404, startedAt);
     writeJsonResponse(response, 404, {
       success: false,
       error: "NOT_FOUND",
@@ -1967,6 +1994,7 @@ async function handleLocalBridgeRequest(request, response) {
     };
     const statusCode = error.statusCode || 500;
     recordLocalRequest(request, route, statusCode);
+    logHttpRequest(request, route, statusCode, startedAt);
     writeJsonResponse(response, statusCode, {
       success: false,
       error: error.message || "LOCAL_BRIDGE_ERROR",
