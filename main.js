@@ -1143,7 +1143,7 @@ async function printLocalPayload(payload = {}) {
     paperSize,
     paperWidth: isThermal ? Number(paperSize.replace("mm", "")) : undefined,
     copies: payload.copies,
-    silent: isThermal ? false : payload.silent !== false,
+    silent: isThermal ? true : payload.silent !== false,
     trace,
   };
 
@@ -1734,7 +1734,7 @@ async function printHtml(payload, trace = null) {
   logPrint("info", "html_print_start", printContext);
   const html = buildPrintDocument(payload);
   const isThermal = isThermalPrintPayload(payload);
-  const startsWithDialog = isThermal || payload.silent === false;
+  const startsWithDialog = payload.silent === false;
   const attempts = startsWithDialog ? [false] : [true, false];
 
   traceStep(trace, "print_strategy_selected", true, {
