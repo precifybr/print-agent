@@ -1213,6 +1213,38 @@ function rememberPrintRequest(signature) {
   recentPrintRequests.set(signature, Date.now());
 }
 
+function fileExists(filePath) {
+  try {
+    return Boolean(filePath) && fs.existsSync(filePath) && fs.statSync(filePath).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function uniqueExistingStrings(values) {
+  return [...new Set(values.filter((value) => typeof value === "string" && value.trim()))];
+}
+
+function getPrintWorkerCandidates() {
+  const executableName = path.basename(process.execPath || "Print Assistant.exe");
+  const candidates = [
+    process.execPath,
+    app.getPath("exe"),
+    process.argv[0],
+    path.join(path.dirname(process.execPath || ""), executableName),
+  ];
+
+  if (process.resourcesPath) {
+    candidates.push(path.join(path.dirname(process.resourcesPath), executableName));
+  }
+
+  if (!app.isPackaged) {
+    candidates.push(process.execPath);
+  }
+
+  return uniqueExistingStrings(candidates);
+}
+
 function startIsolatedPrintJob(printPayload, context = {}) {
   printQueue = printQueue
     .catch(() => {
@@ -1256,12 +1288,40 @@ function startIsolatedPrintJob(printPayload, context = {}) {
     });
 }
 
-function getPrintWorkerArgs(jobPath) {
-  if (app.isPackaged) {
-    return [LOCAL_PRINT_WORKER_FLAG, jobPath];
+function resolvePrintWorkerLaunch(jobPath) {
+  const candidates = getPrintWorkerCandidates();
+  const attempts = candidates.map((candidate) => ({
+    path: candidate,
+    exists: fileExists(candidate),
+  }));
+  const resolved = attempts.find((attempt) => attempt.exists);
+
+  logLocalhost("info", "worker_resolved_executable_path", {
+    jobPath,
+    isPackaged: app.isPackaged,
+    processExecPath: process.execPath,
+    appExePath: app.getPath("exe"),
+    resourcesPath: process.resourcesPath || "",
+    resolvedPath: resolved?.path || "",
+    exists: Boolean(resolved),
+    attempts,
+  });
+
+  if (!resolved) {
+    return {
+      executablePath: "",
+      args: [],
+      attempts,
+    };
   }
 
-  return [app.getAppPath(), LOCAL_PRINT_WORKER_FLAG, jobPath];
+  return {
+    executablePath: resolved.path,
+    args: app.isPackaged
+      ? [LOCAL_PRINT_WORKER_FLAG, jobPath]
+      : [app.getAppPath(), LOCAL_PRINT_WORKER_FLAG, jobPath],
+    attempts,
+  };
 }
 
 function runIsolatedPrintJob(printPayload) {
@@ -1274,11 +1334,60 @@ function runIsolatedPrintJob(printPayload) {
 
     fs.writeFileSync(jobPath, JSON.stringify({ payload: printPayload, resultPath }), "utf8");
 
-    const worker = spawn(process.execPath, getPrintWorkerArgs(jobPath), {
+    const launch = resolvePrintWorkerLaunch(jobPath);
+
+    if (!launch.executablePath) {
+      logLocalhost("error", "worker_spawn_failed", {
+        jobId,
+        error: "WORKER_EXECUTABLE_NOT_FOUND",
+        fallbackPathAttempted: launch.attempts,
+      });
+      runPrintJobInCurrentProcess(printPayload)
+        .then((result) => {
+          cleanupPrintJobFiles(jobPath, resultPath);
+          resolve(result);
+        })
+        .catch((error) => {
+          cleanupPrintJobFiles(jobPath, resultPath);
+          reject(error);
+        });
+      return;
+    }
+
+    logLocalhost("info", "worker_spawning_process", {
+      jobId,
+      executablePath: launch.executablePath,
+      args: launch.args,
+    });
+
+    const worker = spawn(launch.executablePath, launch.args, {
       cwd: app.getAppPath(),
       windowsHide: true,
-      stdio: "ignore",
+      stdio: ["ignore", "ignore", "pipe"],
       detached: false,
+    });
+    const stderrChunks = [];
+
+    logLocalhost("info", "worker_pid", {
+      jobId,
+      pid: worker.pid || null,
+    });
+
+    worker.stderr?.on("data", (chunk) => {
+      const text = chunk.toString("utf8");
+      stderrChunks.push(text);
+      logLocalhost("error", "worker_stderr", {
+        jobId,
+        pid: worker.pid || null,
+        stderr: text,
+      });
+    });
+
+    worker.once("spawn", () => {
+      logLocalhost("info", "worker_started", {
+        jobId,
+        pid: worker.pid || null,
+      });
     });
 
     const timeoutMs = printPayload.silent === false ? PRINT_DIALOG_TIMEOUT_MS : PRINT_TIMEOUT_MS;
@@ -1290,6 +1399,12 @@ function runIsolatedPrintJob(printPayload) {
       settled = true;
       worker.kill();
       cleanupPrintJobFiles(jobPath, resultPath);
+      logLocalhost("error", "worker_timeout", {
+        jobId,
+        pid: worker.pid || null,
+        timeoutMs,
+        executablePath: launch.executablePath,
+      });
       const timeoutError = new Error("PRINT_TIMEOUT");
       if (printPayload.trace) {
         traceStep(printPayload.trace, "worker_timeout", false, {
@@ -1309,6 +1424,22 @@ function runIsolatedPrintJob(printPayload) {
       settled = true;
       clearTimeout(timeout);
       cleanupPrintJobFiles(jobPath, resultPath);
+      logLocalhost("error", "worker_spawn_failed", {
+        jobId,
+        executablePath: launch.executablePath,
+        code: error.code || "",
+        message: error.message || "WORKER_SPAWN_FAILED",
+        isEnoent: error.code === "ENOENT" || /ENOENT/i.test(error.message || ""),
+        fallbackPathAttempted: launch.attempts,
+      });
+
+      if (error.code === "ENOENT" || /ENOENT/i.test(error.message || "")) {
+        runPrintJobInCurrentProcess(printPayload)
+          .then(resolve)
+          .catch(reject);
+        return;
+      }
+
       if (printPayload.trace) {
         traceStep(printPayload.trace, "worker_spawn_error", false, { error });
         finishPrintTrace(printPayload.trace, "failure", { error });
@@ -1324,6 +1455,12 @@ function runIsolatedPrintJob(printPayload) {
 
       settled = true;
       clearTimeout(timeout);
+      logLocalhost(code === 0 ? "info" : "error", "worker_exit_code", {
+        jobId,
+        pid: worker.pid || null,
+        code,
+        stderr: stderrChunks.join("").slice(-2000),
+      });
 
       try {
         const result = JSON.parse(fs.readFileSync(resultPath, "utf8"));
@@ -1346,6 +1483,24 @@ function runIsolatedPrintJob(printPayload) {
       }
     });
   });
+}
+
+async function runPrintJobInCurrentProcess(printPayload) {
+  const trace = printPayload.trace || createPrintTrace("local_print_in_process", {
+    printer: printPayload.printerName || "",
+  });
+
+  logLocalhost("warn", "worker_fallback_in_process", {
+    jobId: printPayload.job?.id || trace.jobId,
+    printerName: printPayload.printerName || "",
+  });
+  traceStep(trace, "worker_fallback_in_process", true, {
+    pid: process.pid,
+    printerName: printPayload.printerName || "",
+  });
+  await printHtml(printPayload, trace);
+  finishPrintTrace(trace, "success");
+  return { success: true, trace };
 }
 
 function cleanupPrintJobFiles(...filePaths) {
