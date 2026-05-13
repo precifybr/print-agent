@@ -27,7 +27,7 @@ const PRINT_DIALOG_TIMEOUT_MS = 120000;
 const PRINT_DIAGNOSTIC_MAX_JOBS = 100;
 const PRINT_DIAGNOSTIC_MAX_BYTES = 5 * 1024 * 1024;
 const LOG_LEVELS = new Set(["error", "warn", "info", "verbose", "debug", "silly"]);
-const LOG_CATEGORIES = new Set(["app", "print", "updater"]);
+const LOG_CATEGORIES = new Set(["app", "print", "localhost"]);
 const LOCAL_BRIDGE_HOST = "127.0.0.1";
 const LOCAL_BRIDGE_PORT = 18181;
 const LOCAL_SETTINGS_FILE = "local-bridge-settings.json";
@@ -35,7 +35,21 @@ const PAPER_SIZES = new Set(["58mm", "80mm", "A4"]);
 const LOCAL_PRINT_WORKER_FLAG = "--local-print-worker";
 const LOCAL_REQUEST_MAX_BYTES = 2 * 1024 * 1024;
 const DUPLICATE_PRINT_WINDOW_MS = 8000;
-const UPDATE_CHECK_ENABLED = process.env.PRINT_ASSISTANT_ENABLE_UPDATES === "1";
+const WATCHDOG_INTERVAL_MS = 15000;
+const LOCAL_SECTOR_PROFILES = {
+  motorista: {
+    paperSize: "58mm",
+    keywords: ["motorista", "entrega", "delivery", "motoboy", "58", "balcao", "pos"],
+  },
+  cozinha: {
+    paperSize: "80mm",
+    keywords: ["cozinha", "kitchen", "expedicao", "80", "hprt", "termica"],
+  },
+  financeiro: {
+    paperSize: "A4",
+    keywords: ["financeiro", "a4", "laser", "office", "deskjet", "pdf"],
+  },
+};
 
 let mainWindow;
 let tray;
@@ -45,7 +59,7 @@ let lastPrinterSnapshot = "";
 const printWindows = new Set();
 let appLogger;
 let printLogger;
-let updaterLogger;
+let localhostLogger;
 let localBridgeServer;
 let localBridgeListening = false;
 let cachedPrinters = [];
@@ -54,12 +68,15 @@ let lastPrintDiagnostic = null;
 let printDiagnosticHistory = [];
 let printQueue = Promise.resolve();
 const recentPrintRequests = new Map();
+let watchdogTimer = null;
 const localBridgeStats = {
   startedAt: new Date().toISOString(),
   requestCount: 0,
   lastRequest: null,
   lastPrint: null,
   lastError: null,
+  healthChecks: 0,
+  lastHealthCheckAt: null,
 };
 const isLocalPrintWorker = process.argv.includes(LOCAL_PRINT_WORKER_FLAG);
 
@@ -89,7 +106,7 @@ if (!gotSingleInstanceLock) {
 function initializeLogging() {
   appLogger = createFileLogger("app", "app.log");
   printLogger = createFileLogger("print", "print.log");
-  updaterLogger = createFileLogger("updater", "updater.log");
+  localhostLogger = createFileLogger("localhost", "localhost.log");
 }
 
 function createFileLogger(logId, fileName) {
@@ -133,45 +150,37 @@ function getPrintDiagnosticsPath() {
 
 function getDefaultLocalSettings() {
   return {
-    aliases: {},
     preferredPrinter: "",
     paperSize: "80mm",
-    routes: {
-      kitchen: "",
-      balcony: "",
-    },
-    autoUpdateEnabled: false,
+    autoUpdateEnabled: true,
+    sectors: {},
   };
 }
 
 function sanitizeLocalSettings(settings = {}) {
-  const aliases = settings.aliases && typeof settings.aliases === "object" && !Array.isArray(settings.aliases)
-    ? settings.aliases
-    : {};
-
-  const routes = settings.routes && typeof settings.routes === "object" && !Array.isArray(settings.routes)
-    ? settings.routes
+  const sectors = settings.sectors && typeof settings.sectors === "object" && !Array.isArray(settings.sectors)
+    ? settings.sectors
     : {};
 
   return {
-    aliases: Object.entries(aliases).reduce((result, [alias, printerName]) => {
-      const safeAlias = String(alias || "").trim();
+    preferredPrinter: String(settings.preferredPrinter || "").trim(),
+    paperSize: PAPER_SIZES.has(settings.paperSize) ? settings.paperSize : "80mm",
+    autoUpdateEnabled: Boolean(settings.autoUpdateEnabled),
+    sectors: Object.entries(sectors).reduce((result, [sectorName, printerName]) => {
+      const safeSectorName = normalizeSectorName(sectorName);
       const safePrinterName = String(printerName || "").trim();
 
-      if (safeAlias && safePrinterName) {
-        result[safeAlias] = safePrinterName;
+      if (safeSectorName && safePrinterName) {
+        result[safeSectorName] = safePrinterName;
       }
 
       return result;
     }, {}),
-    preferredPrinter: String(settings.preferredPrinter || "").trim(),
-    paperSize: PAPER_SIZES.has(settings.paperSize) ? settings.paperSize : "80mm",
-    routes: {
-      kitchen: String(routes.kitchen || "").trim(),
-      balcony: String(routes.balcony || "").trim(),
-    },
-    autoUpdateEnabled: Boolean(settings.autoUpdateEnabled),
   };
+}
+
+function normalizeSectorName(value) {
+  return normalizePrinterName(value || "");
 }
 
 function readLocalSettings() {
@@ -194,11 +203,9 @@ function writeLocalSettings(nextSettings = {}) {
 
   fs.writeFileSync(getLocalSettingsPath(), `${JSON.stringify(settings, null, 2)}\n`, "utf8");
   logApp("info", "local_settings_saved", {
-    aliasCount: Object.keys(settings.aliases).length,
     hasPreferredPrinter: Boolean(settings.preferredPrinter),
     paperSize: settings.paperSize,
-    hasKitchenRoute: Boolean(settings.routes.kitchen),
-    hasBalconyRoute: Boolean(settings.routes.balcony),
+    sectorCount: Object.keys(settings.sectors).length,
     autoUpdateEnabled: settings.autoUpdateEnabled,
   });
   return settings;
@@ -237,7 +244,7 @@ function safeRename(sourcePath, targetPath) {
 }
 
 function writeDiagnosticLog(category, level, event, details = {}) {
-  if (!appLogger || !printLogger || !updaterLogger) {
+  if (!appLogger || !printLogger || !localhostLogger) {
     return;
   }
 
@@ -247,8 +254,8 @@ function writeDiagnosticLog(category, level, event, details = {}) {
   const message = formatLogMessage(safeCategory, safeEvent, details);
   const targetLogger = safeCategory === "print"
     ? printLogger
-    : safeCategory === "updater"
-      ? updaterLogger
+    : safeCategory === "localhost"
+      ? localhostLogger
       : appLogger;
 
   targetLogger[safeLevel](message);
@@ -267,7 +274,11 @@ function logPrint(level, event, details = {}) {
 }
 
 function logUpdater(level, event, details = {}) {
-  writeDiagnosticLog("updater", level, event, details);
+  writeDiagnosticLog("app", level, event, details);
+}
+
+function logLocalhost(level, event, details = {}) {
+  writeDiagnosticLog("localhost", level, event, details);
 }
 
 function logError(event, details = {}) {
@@ -501,7 +512,7 @@ function createTray() {
   }
 
   tray = new Tray(createTrayIcon());
-  tray.setToolTip("DALMAGO Print Agent");
+  tray.setToolTip("Print Assistant");
   tray.setContextMenu(buildTrayMenu());
   tray.on("double-click", restoreMainWindow);
   logApp("info", "tray_initialized");
@@ -513,10 +524,6 @@ function buildTrayMenu() {
     {
       label: "Abrir",
       click: restoreMainWindow,
-    },
-    {
-      label: "Reiniciar polling",
-      click: restartPolling,
     },
     {
       label: "Ver status",
@@ -549,37 +556,19 @@ function restoreMainWindow() {
   });
 }
 
-function sendRendererCommand(command, payload = {}) {
-  if (!mainWindow || mainWindow.isDestroyed()) {
-    return false;
-  }
-
-  mainWindow.webContents.send("print-agent:lifecycle-command", {
-    command,
-    payload,
-  });
-  return true;
-}
-
-function restartPolling() {
-  logApp("info", "tray_restart_polling_requested");
-  restoreMainWindow();
-  sendRendererCommand("restart-polling");
-}
-
 function showStatusDialog() {
   const status = getAppStatus();
   logApp("info", "tray_status_requested", status);
 
   dialog.showMessageBox({
     type: "info",
-    title: "DALMAGO Print Agent",
+    title: "Print Assistant",
     message: "Status do Print Agent",
     detail: [
       `Versao: ${status.version}`,
       `Janela: ${status.windowVisible ? "visivel" : "oculta"}`,
       `Tray: ${status.trayVisible ? "ativo" : "inativo"}`,
-      `Inicializacao: ${status.startupMode}`,
+      `Localhost: ${status.localhostListening ? "online" : "offline"}`,
       `Autostart: ${status.autostartEnabled ? "ativo" : "inativo"}`,
     ].join("\n"),
     buttons: ["OK"],
@@ -647,6 +636,7 @@ function getAppStatus() {
     trayVisible: Boolean(tray),
     windowVisible: Boolean(mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()),
     autostartEnabled: Boolean(loginSettings.openAtLogin),
+    localhostListening: localBridgeListening,
     host: os.hostname(),
   };
 }
@@ -817,57 +807,34 @@ async function resolveLocalPrinter(requestedPrinterName) {
   const printers = cachedPrinters.length ? cachedPrinters : await getPrinters();
   const settings = readLocalSettings();
   const requestedName = String(requestedPrinterName || "").trim();
-  const normalizedTarget = normalizePrinterName(requestedName);
+  const exactPrinter = findPrinterByNormalizedName(printers, requestedName);
 
-  if (normalizedTarget) {
-    const exactPrinter = findPrinterByNormalizedName(printers, requestedName);
+  if (exactPrinter) {
+    logPrint("info", "printer_resolved", {
+      requestedPrinter: requestedName,
+      printerName: exactPrinter.name,
+      resolvedBy: "exact",
+    });
+    return {
+      printer: exactPrinter,
+      printers,
+      resolvedBy: "exact",
+    };
+  }
 
-    if (exactPrinter) {
-      logPrint("info", "printer_resolved", {
-        requestedPrinter: requestedName,
-        printerName: exactPrinter.name,
-        resolvedBy: "exact",
-      });
-      return {
-        printer: exactPrinter,
-        printers,
-        resolvedBy: "exact",
-      };
-    }
+  const partialPrinter = findPrinterByNormalizedName(printers, requestedName, true);
 
-    const aliasEntry = Object.entries(settings.aliases).find(([alias]) => normalizePrinterName(alias) === normalizedTarget);
-    const aliasTarget = aliasEntry ? aliasEntry[1] : "";
-    const aliasPrinter = findPrinterByNormalizedName(printers, aliasTarget, true);
-
-    if (aliasPrinter) {
-      logPrint("info", "printer_resolved", {
-        requestedPrinter: requestedName,
-        alias: aliasEntry?.[0] || "",
-        aliasTarget,
-        printerName: aliasPrinter.name,
-        resolvedBy: "alias",
-      });
-      return {
-        printer: aliasPrinter,
-        printers,
-        resolvedBy: "alias",
-      };
-    }
-
-    const partialPrinter = findPrinterByNormalizedName(printers, requestedName, true);
-
-    if (partialPrinter) {
-      logPrint("info", "printer_resolved", {
-        requestedPrinter: requestedName,
-        printerName: partialPrinter.name,
-        resolvedBy: "partial",
-      });
-      return {
-        printer: partialPrinter,
-        printers,
-        resolvedBy: "partial",
-      };
-    }
+  if (partialPrinter) {
+    logPrint("info", "printer_resolved", {
+      requestedPrinter: requestedName,
+      printerName: partialPrinter.name,
+      resolvedBy: "partial",
+    });
+    return {
+      printer: partialPrinter,
+      printers,
+      resolvedBy: "partial",
+    };
   }
 
   const preferredPrinter = findPrinterByNormalizedName(printers, settings.preferredPrinter, true);
@@ -904,6 +871,68 @@ async function resolveLocalPrinter(requestedPrinterName) {
     printers,
     resolvedBy: "missing",
   };
+}
+
+function findPrinterByKeyword(printers, keywords = []) {
+  for (const keyword of keywords) {
+    const match = findPrinterByNormalizedName(printers, keyword, true);
+
+    if (match) {
+      return match;
+    }
+  }
+
+  return null;
+}
+
+function resolveSectorAssignment(printers, sectorName, settings = readLocalSettings()) {
+  const normalizedSector = normalizeSectorName(sectorName);
+  const configuredPrinter = settings.sectors[normalizedSector]
+    ? findPrinterByNormalizedName(printers, settings.sectors[normalizedSector], true)
+    : null;
+
+  if (configuredPrinter) {
+    return {
+      printer: configuredPrinter,
+      paperSize: LOCAL_SECTOR_PROFILES[normalizedSector]?.paperSize || settings.paperSize,
+      resolvedBy: "sector_config",
+      sector: normalizedSector,
+    };
+  }
+
+  const profile = LOCAL_SECTOR_PROFILES[normalizedSector];
+
+  if (profile) {
+    const keywordMatch = findPrinterByKeyword(printers, [normalizedSector, ...profile.keywords]);
+
+    if (keywordMatch) {
+      return {
+        printer: keywordMatch,
+        paperSize: profile.paperSize,
+        resolvedBy: "sector_keyword",
+        sector: normalizedSector,
+      };
+    }
+  }
+
+  return {
+    printer: null,
+    paperSize: profile?.paperSize || settings.paperSize,
+    resolvedBy: "sector_missing",
+    sector: normalizedSector,
+  };
+}
+
+function buildSectorSnapshot(printers, settings = readLocalSettings()) {
+  return Object.keys(LOCAL_SECTOR_PROFILES).reduce((result, sectorName) => {
+    const assignment = resolveSectorAssignment(printers, sectorName, settings);
+    result[sectorName] = {
+      printer: assignment.printer?.name || null,
+      paperSize: assignment.paperSize,
+      resolvedBy: assignment.resolvedBy,
+    };
+    return result;
+  }, {});
 }
 
 function logPrinterDiscovery(printers) {
@@ -1008,22 +1037,40 @@ function buildTextPrintHtml(text) {
   return `<pre>${escapeHtml(text)}</pre>`;
 }
 
+function buildOrderPrintHtml(sector, orderPayload) {
+  const title = sector ? `SETOR: ${sector.toUpperCase()}\n\n` : "";
+  const serializedOrder = typeof orderPayload === "string"
+    ? orderPayload
+    : JSON.stringify(orderPayload, null, 2);
+
+  return buildTextPrintHtml(`${title}${serializedOrder}`);
+}
+
 async function printLocalPayload(payload = {}) {
   const jobId = randomUUID();
+  const requestedSector = normalizeSectorName(payload.setor || payload.sector || "");
   const trace = createPrintTrace("local_print", {
     jobId,
-    requestedPrinter: payload.printer || payload.printerName || "",
+    requestedPrinter: payload.printer || payload.printerName || requestedSector || "",
   });
   const settings = readLocalSettings();
-  const requestedRoute = String(payload.route || "").trim().toLowerCase();
-  const routePrinter = requestedRoute && settings.routes[requestedRoute] ? settings.routes[requestedRoute] : "";
-  const requestedPrinter = payload.printer || payload.printerName || routePrinter || "";
+  const printers = cachedPrinters.length ? cachedPrinters : await getPrinters();
+  const sectorAssignment = requestedSector
+    ? resolveSectorAssignment(printers, requestedSector, settings)
+    : null;
+  const requestedPrinter = payload.printer
+    || payload.printerName
+    || sectorAssignment?.printer?.name
+    || "";
   const printSignature = getPrintRequestSignature(payload, requestedPrinter);
   trace.requestedPrinter = requestedPrinter;
+  trace.sector = requestedSector;
 
   traceStep(trace, "json_validated", true, {
     hasHtml: Boolean(payload.html),
     hasText: typeof payload.text === "string",
+    hasPedido: typeof payload.pedido === "object" && payload.pedido !== null,
+    sector: requestedSector,
     requestedPrinter,
   });
 
@@ -1031,14 +1078,16 @@ async function printLocalPayload(payload = {}) {
     logPrint("warn", "local_print_duplicate_rejected", {
       jobId,
       requestedPrinter,
-      route: requestedRoute,
+      sector: requestedSector,
     });
     throw createHttpError(409, "DUPLICATE_PRINT_REQUEST");
   }
 
   traceStep(trace, "windows_printers_lookup_start", true, { requestedPrinter });
   const { printer, resolvedBy } = await resolveLocalPrinter(requestedPrinter);
-  const paperSize = PAPER_SIZES.has(payload.paperSize) ? payload.paperSize : settings.paperSize;
+  const paperSize = PAPER_SIZES.has(payload.paperSize)
+    ? payload.paperSize
+    : sectorAssignment?.paperSize || settings.paperSize;
 
   if (!printer) {
     traceStep(trace, "printer_not_found", false, {
@@ -1058,9 +1107,10 @@ async function printLocalPayload(payload = {}) {
     requestedPrinter,
     printerName: printer.name,
     resolvedBy,
+    sectorResolution: sectorAssignment?.resolvedBy || "",
   });
 
-  if (!payload.html && typeof payload.text !== "string") {
+  if (!payload.html && typeof payload.text !== "string" && !payload.pedido) {
     traceStep(trace, "content_missing", false);
     finishPrintTrace(trace, "failure", { message: "PRINT_CONTENT_MISSING" });
     throw createHttpError(400, "PRINT_CONTENT_MISSING");
@@ -1069,12 +1119,13 @@ async function printLocalPayload(payload = {}) {
   rememberPrintRequest(printSignature);
 
   const isThermal = ["58mm", "80mm"].includes(paperSize);
-  const html = payload.html || buildTextPrintHtml(payload.text);
+  const html = payload.html
+    || (typeof payload.text === "string" ? buildTextPrintHtml(payload.text) : buildOrderPrintHtml(requestedSector, payload.pedido));
 
   logPrint("info", "local_print_dispatch", {
     jobId,
     requestedPrinter,
-    route: requestedRoute,
+    sector: requestedSector,
     printerName: printer.name,
     resolvedBy,
     paperSize,
@@ -1099,7 +1150,7 @@ async function printLocalPayload(payload = {}) {
   startIsolatedPrintJob(printPayload, {
     jobId,
     requestedPrinter,
-    route: requestedRoute,
+    sector: requestedSector,
     printerName: printer.name,
     resolvedBy,
     paperSize,
@@ -1109,7 +1160,7 @@ async function printLocalPayload(payload = {}) {
     jobId,
     acceptedAt: new Date().toISOString(),
     requestedPrinter,
-    route: requestedRoute,
+    sector: requestedSector,
     printerName: printer.name,
     resolvedBy,
     paperSize,
@@ -1135,11 +1186,12 @@ async function printLocalPayload(payload = {}) {
 function getPrintRequestSignature(payload, requestedPrinter) {
   const content = JSON.stringify({
     printer: requestedPrinter,
-    route: payload.route || "",
+    sector: payload.setor || payload.sector || "",
     paperSize: payload.paperSize || "",
     copies: payload.copies || 1,
     html: payload.html || "",
     text: payload.text || "",
+    pedido: payload.pedido || null,
   });
 
   return createHash("sha256").update(content).digest("hex");
@@ -1626,7 +1678,16 @@ async function printPdf(payload) {
 }
 
 async function printRawTestPayload(payload = {}) {
-  const requestedPrinter = payload.printer || payload.printerName || readLocalSettings().preferredPrinter || "";
+  const settings = readLocalSettings();
+  const requestedSector = normalizeSectorName(payload.setor || payload.sector || "");
+  const sectorAssignment = requestedSector
+    ? resolveSectorAssignment(cachedPrinters.length ? cachedPrinters : await getPrinters(), requestedSector, settings)
+    : null;
+  const requestedPrinter = payload.printer
+    || payload.printerName
+    || sectorAssignment?.printer?.name
+    || settings.preferredPrinter
+    || "";
   const trace = createPrintTrace("raw_print_test", {
     requestedPrinter,
   });
@@ -1668,7 +1729,7 @@ async function printRawTestPayload(payload = {}) {
     });
 
     try {
-      const html = "<!doctype html><html><body>TESTE DALMAGO<br>123<br>ABC</body></html>";
+      const html = "<!doctype html><html><body>TESTE PRINT ASSISTANT<br>LOCAL-FIRST<br>OK</body></html>";
       await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
       traceStep(trace, "html_loaded", true, {
         htmlLength: html.length,
@@ -1792,32 +1853,40 @@ function recordLocalRequest(request, route, statusCode) {
     statusCode,
     origin: request.headers.origin || "",
   };
-  logApp("info", "local_bridge_request", localBridgeStats.lastRequest);
+  logLocalhost("info", "request", localBridgeStats.lastRequest);
 }
 
 async function getLocalBridgeStatus() {
   const printers = await getPrinters();
   const defaultPrinter = getDefaultPrinter(printers);
   const settings = readLocalSettings();
+  const sectors = buildSectorSnapshot(printers, settings);
 
   return {
-    online: true,
-    mode: "local",
+    online: Boolean(localBridgeListening),
     version: app.getVersion(),
-    server: {
-      host: "localhost",
-      port: LOCAL_BRIDGE_PORT,
-      url: `http://localhost:${LOCAL_BRIDGE_PORT}`,
-      listening: localBridgeListening,
-    },
+    listening: localBridgeListening,
     defaultPrinter: defaultPrinter?.name || null,
     printers,
-    settings,
+    sectors,
     diagnostics: {
       ...localBridgeStats,
       lastPrintDiagnostic,
       update: updateStatus,
     },
+  };
+}
+
+async function getLocalBridgeHealth() {
+  const printers = await getPrinters();
+
+  return {
+    ok: localBridgeListening,
+    listening: localBridgeListening,
+    version: app.getVersion(),
+    printerCount: printers.length,
+    queueBusy: printWindows.size > 0,
+    lastHealthCheckAt: localBridgeStats.lastHealthCheckAt,
   };
 }
 
@@ -1847,16 +1916,19 @@ async function handleLocalBridgeRequest(request, response) {
       return;
     }
 
+    if (request.method === "GET" && route === "/health") {
+      recordLocalRequest(request, route, 200);
+      writeJsonResponse(response, 200, await getLocalBridgeHealth());
+      return;
+    }
+
     if (request.method === "GET" && route === "/printers") {
       const status = await getLocalBridgeStatus();
       recordLocalRequest(request, route, 200);
       writeJsonResponse(response, 200, {
         printers: status.printers,
         defaultPrinter: status.defaultPrinter,
-        aliases: status.settings.aliases,
-        paperSize: status.settings.paperSize,
-        preferredPrinter: status.settings.preferredPrinter,
-        routes: status.settings.routes,
+        sectors: status.sectors,
       });
       return;
     }
@@ -1869,20 +1941,11 @@ async function handleLocalBridgeRequest(request, response) {
       return;
     }
 
-    if (request.method === "POST" && route === "/print-raw-test") {
+    if (request.method === "POST" && route === "/print-test") {
       const payload = await readRequestJson(request);
       const result = await printRawTestPayload(payload);
       recordLocalRequest(request, route, 200);
       writeJsonResponse(response, 200, result);
-      return;
-    }
-
-    if (request.method === "GET" && route === "/last-print-log") {
-      recordLocalRequest(request, route, 200);
-      writeJsonResponse(response, 200, {
-        lastJob: lastPrintDiagnostic,
-        jobs: printDiagnosticHistory.slice(-10),
-      });
       return;
     }
 
@@ -1927,7 +1990,7 @@ function startLocalBridgeServer() {
 
   localBridgeServer.listen(LOCAL_BRIDGE_PORT, LOCAL_BRIDGE_HOST, () => {
     localBridgeListening = true;
-    logApp("info", "local_bridge_server_started", {
+    logLocalhost("info", "server_started", {
       host: LOCAL_BRIDGE_HOST,
       port: LOCAL_BRIDGE_PORT,
     });
@@ -1954,11 +2017,65 @@ function stopLocalBridgeServer() {
         return;
       }
 
-      logApp("info", "local_bridge_server_stopped");
+      logLocalhost("info", "server_stopped");
     });
     server.closeAllConnections?.();
   } catch (error) {
     logError("local_bridge_server_stop_exception", { error });
+  }
+}
+
+function startWatchdog() {
+  stopWatchdog();
+  watchdogTimer = setInterval(() => {
+    runHealthCheck().catch((error) => {
+      logError("watchdog_health_check_failed", { error });
+    });
+  }, WATCHDOG_INTERVAL_MS);
+  watchdogTimer.unref?.();
+}
+
+function stopWatchdog() {
+  if (!watchdogTimer) {
+    return;
+  }
+
+  clearInterval(watchdogTimer);
+  watchdogTimer = null;
+}
+
+async function runHealthCheck() {
+  if (isQuitting) {
+    return;
+  }
+
+  localBridgeStats.healthChecks += 1;
+  localBridgeStats.lastHealthCheckAt = new Date().toISOString();
+
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    logApp("warn", "watchdog_recreating_window");
+    createWindow({ show: false });
+  }
+
+  if (!localBridgeServer || !localBridgeListening) {
+    logLocalhost("warn", "watchdog_restarting_localhost", {
+      listening: localBridgeListening,
+      hasServer: Boolean(localBridgeServer),
+    });
+    stopLocalBridgeServer();
+    startLocalBridgeServer();
+    return;
+  }
+
+  try {
+    await getPrinters();
+  } catch (error) {
+    localBridgeStats.lastError = {
+      at: new Date().toISOString(),
+      source: "healthcheck",
+      message: error.message || "HEALTHCHECK_FAILED",
+    };
+    logError("healthcheck_printer_refresh_failed", { error });
   }
 }
 
@@ -1972,7 +2089,7 @@ function cleanupBeforeQuit() {
     activePrintWindows: printWindows.size,
   });
   isQuitting = true;
-  sendRendererCommand("shutdown");
+  stopWatchdog();
   stopLocalBridgeServer();
 
   for (const printWindow of printWindows) {
@@ -1996,24 +2113,10 @@ function cleanupBeforeQuit() {
   logApp("info", "app_shutdown_cleanup_complete");
 }
 
-function writeRendererLog(payload = {}) {
-  const category = typeof payload.category === "string" ? payload.category : "app";
-  const level = typeof payload.level === "string" ? payload.level : "info";
-  const event = typeof payload.event === "string" ? payload.event : "renderer_event";
-  const details = payload.details && typeof payload.details === "object" ? payload.details : {};
-
-  writeDiagnosticLog(category, level, event, {
-    source: "renderer",
-    ...details,
-  });
-
-  return { success: true };
-}
-
 function getDefaultUpdateStatus() {
   return {
     prepared: true,
-    enabled: UPDATE_CHECK_ENABLED,
+    enabled: true,
     checking: false,
     available: false,
     downloaded: false,
@@ -2024,7 +2127,7 @@ function getDefaultUpdateStatus() {
 }
 
 function configureAutoUpdate() {
-  autoUpdater.logger = updaterLogger;
+  autoUpdater.logger = appLogger;
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
 
@@ -2109,10 +2212,9 @@ function configureAutoUpdate() {
 }
 
 function maybeCheckForUpdates() {
-  const settings = readLocalSettings();
   updateStatus = {
     ...updateStatus,
-    enabled: Boolean(UPDATE_CHECK_ENABLED || settings.autoUpdateEnabled),
+    enabled: true,
   };
 
   if (!app.isPackaged || !updateStatus.enabled) {
@@ -2177,22 +2279,14 @@ function installDownloadedUpdate() {
   return { success: true };
 }
 
-ipcMain.handle("print-agent:get-printers", getPrinters);
-ipcMain.handle("print-agent:print-html", (_event, payload) => printHtml(payload || {}));
-ipcMain.handle("print-agent:print-pdf", (_event, payload) => printPdf(payload || {}));
-ipcMain.handle("print-agent:get-local-bridge-status", getLocalBridgeStatus);
-ipcMain.handle("print-agent:get-local-settings", readLocalSettings);
-ipcMain.handle("print-agent:update-local-settings", (_event, payload) => writeLocalSettings(payload || {}));
-ipcMain.handle("print-agent:print-local", (_event, payload) => printLocalPayload(payload || {}));
-ipcMain.handle("print-agent:print-raw-test", (_event, payload) => printRawTestPayload(payload || {}));
-ipcMain.handle("print-agent:get-last-print-log", () => ({
-  lastJob: lastPrintDiagnostic,
-  jobs: printDiagnosticHistory.slice(-10),
-}));
+ipcMain.handle("print-agent:get-status", getLocalBridgeStatus);
+ipcMain.handle("print-agent:print-test", (_event, payload) => printRawTestPayload(payload || {}));
 ipcMain.handle("print-agent:check-for-updates", checkForUpdatesFromRenderer);
 ipcMain.handle("print-agent:install-update", installDownloadedUpdate);
-ipcMain.handle("print-agent:get-app-status", getAppStatus);
-ipcMain.handle("print-agent:write-log", (_event, payload) => writeRendererLog(payload || {}));
+ipcMain.handle("print-agent:quit", () => {
+  requestAppQuit("renderer");
+  return { success: true };
+});
 
 if (gotSingleInstanceLock) {
   app.whenReady().then(() => {
@@ -2206,6 +2300,7 @@ if (gotSingleInstanceLock) {
     createTray();
     createWindow({ show: startupMode !== "hidden" });
     startLocalBridgeServer();
+    startWatchdog();
     maybeCheckForUpdates();
     logApp("info", "app_startup_complete", getAppStatus());
   }).catch((error) => {

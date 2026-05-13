@@ -90,7 +90,7 @@ if ($LASTEXITCODE -ne 0) {
   Fail 'Nao foi possivel identificar a branch atual.'
 }
 if ($currentBranch -ne 'main') {
-  Fail "Execute o sync a partir da branch main. Branch atual: $currentBranch"
+  Fail "Execute a release a partir da branch main. Branch atual: $currentBranch"
 }
 
 $package = Get-Content (Join-Path $repoRoot 'package.json') -Raw | ConvertFrom-Json

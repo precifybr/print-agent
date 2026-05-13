@@ -1,6 +1,6 @@
 # Build e distribuicao
 
-Este aplicativo e um helper desktop privado do ecossistema DALMAGO.
+Este aplicativo e um helper desktop local-first para impressao no Windows.
 
 ## Empacotamento
 
@@ -44,4 +44,4 @@ icone deve ter boa legibilidade em 256x256, 48x48, 32x32 e 16x16.
 
 O nome do instalador segue:
 
-`PrintAssistant Setup ${version}.exe`
+`PrintAssistantSetup.exe`

@@ -1,150 +1,96 @@
 # Print Assistant
 
-Electron desktop local print bridge for browser-based systems.
+Desktop local-first print bridge for Windows stores.
 
-## Local bridge
+## What It Does
 
-When the app starts, it opens a local HTTP server:
+Print Assistant runs only on the local computer and is responsible for:
 
-- `http://localhost:18181/status`
-- `http://localhost:18181/printers`
-- `http://localhost:18181/print`
-- `http://localhost:18181/print-raw-test`
-- `http://localhost:18181/last-print-log`
+- localhost bridge
+- printer discovery
+- sector routing
+- local spool and queue
+- printing
+- local logs
+- automatic updates
 
-The local mode does not require Supabase auth, JWT, bootstrap, polling, remote queue, or token rotation.
+The app does not require token, polling, cloud auth, remote queue, or session state to print.
 
-### API
+## Local Endpoints
 
-`GET /status`
+When the app starts, it exposes:
 
-Returns app version, server state, default printer, detected printers, settings, and update status.
+- `GET http://127.0.0.1:18181/status`
+- `GET http://127.0.0.1:18181/health`
+- `GET http://127.0.0.1:18181/printers`
+- `POST http://127.0.0.1:18181/print`
+- `POST http://127.0.0.1:18181/print-test`
 
-`GET /printers`
+All endpoints are localhost-only.
 
-Returns detected Windows printers, the default printer, preferred printer, and selected paper size.
+## Printing Contract
 
-`POST /print`
-
-Prints immediately.
+The frontend can send a sector and an order payload:
 
 ```json
 {
-  "printer": "BALCAO",
+  "setor": "cozinha",
+  "pedido": {
+    "numero": 123,
+    "itens": [
+      "X-Burger",
+      "Refrigerante"
+    ]
+  }
+}
+```
+
+It can also send direct HTML or text:
+
+```json
+{
+  "printer": "HPRT MPT-II",
   "html": "<html><body>Pedido #123</body></html>"
 }
 ```
 
 ```json
 {
-  "printer": "BALCAO",
+  "printer": "HPRT MPT-II",
   "text": "Pedido #123"
 }
 ```
 
-Route-based print:
+Sector routing is local and automatic. The app tries sector-specific matches first, then preferred/default Windows printers.
 
-```json
-{
-  "route": "kitchen",
-  "text": "Pedido #123"
-}
-```
+## UI
 
-Printer resolution order:
+The desktop UI is intentionally minimal:
 
-- exact Windows printer name
-- configured alias
-- partial printer name match
-- preferred printer
-- default Windows printer fallback
+- online/offline status
+- detected printers
+- quick test button
+- update check
+- quit
 
-Paper size can be configured in the Electron UI as `58mm`, `80mm`, or `A4`.
+## Stability Notes
 
-Thermal printers (`58mm` and `80mm`) use the native Windows print dialog by default because Electron silent print is unreliable on several thermal drivers. A4 jobs may try silent printing first and automatically fall back to the native dialog when Electron returns an error or timeout.
+- Thermal printers `58mm` and `80mm` use the native dialog by default.
+- A4 can try silent printing first and fall back to the dialog.
+- Print jobs are serialized through a local queue.
+- The app is single-instance and focuses the existing window.
+- A watchdog recreates the localhost server if it stops listening.
+- Logs rotate automatically at 5 MB.
 
-### Desktop app
+Log files:
 
-The desktop UI is intentionally minimal for store operators:
+- `logs/app.log`
+- `logs/print.log`
+- `logs/localhost.log`
 
-- Online/offline status
-- Default printer selector
-- Paper size selector
-- Test print button
-- Quick diagnostic button
-- Last print result
-- Discreet update check button
+## Installer
 
-Advanced details stay in local logs and the localhost API, not on the operator screen.
-
-### Frontend handling
-
-Use a short browser timeout, usually 3-8 seconds. A successful `/print` response means the local bridge accepted the job and dispatched it to the hidden print worker.
-
-Success:
-
-```json
-{
-  "success": true,
-  "accepted": true,
-  "jobId": "uuid",
-  "printer": "POS-58",
-  "requestedPrinter": "BALCAO",
-  "resolvedBy": "alias",
-  "paperSize": "58mm"
-}
-```
-
-Common errors:
-
-```json
-{ "success": false, "error": "INVALID_JSON" }
-```
-
-```json
-{ "success": false, "error": "PAYLOAD_TOO_LARGE" }
-```
-
-```json
-{ "success": false, "error": "DUPLICATE_PRINT_REQUEST" }
-```
-
-```json
-{ "success": false, "error": "NO_PRINTER_AVAILABLE" }
-```
-
-If `GET /status` fails, show the operator that Print Assistant is offline and ask them to open the desktop app. Do not fall back to cloud polling for local printing.
-
-### Print diagnostics
-
-`POST /print-raw-test`
-
-Runs a minimal Electron print test with a 300x600 hidden window, plain HTML, selected `deviceName`, and `silent: false`.
-
-```json
-{
-  "printer": "POS-58"
-}
-```
-
-`GET /last-print-log`
-
-Returns the latest diagnostic job, including checkpoints, selected printer, Electron callback, duration, and final error when available.
-
-### Production notes
-
-- The server binds to `127.0.0.1:18181` and rejects non-loopback requests.
-- Print payloads are capped at 2 MB.
-- Duplicate prints with the same content/printer within a short window are rejected.
-- Logs are written under the app user data directory and avoid storing full HTML content.
-- Production logs are split into `app.log`, `print.log`, and `updater.log`, each rotating at 5 MB.
-- Print diagnostics keep the latest 100 jobs and are capped at 5 MB.
-- Auto-update is prepared with `electron-updater` and GitHub Releases provider `precifybr/print-agent`.
-- The Windows installer uses a fixed app id and a fixed install path so upgrades replace the existing installation while preserving AppData settings.
-
-## Installer name
-
-Windows releases must always publish the installer as:
+Windows releases must publish the installer as:
 
 `PrintAssistantSetup.exe`
 
@@ -152,40 +98,22 @@ Permanent download URL:
 
 `https://github.com/precifybr/print-agent/releases/latest/download/PrintAssistantSetup.exe`
 
-The app version remains only in `package.json` and app metadata. Do not add the version to the installer file name.
+Upgrades replace the installed app and preserve local data in AppData.
 
-## Repository contents
-
-- Electron app source: `main.js`, `preload.js`, `index.html`
-- Windows packaging assets: `build/`
-- Build and release notes: `docs/BUILD.md`
-- Legacy cloud print network contract and Supabase backend pieces: `docs/PRINT_NETWORK.md`, `supabase/`
-
-## Local development
+## Development
 
 Requirements:
 
 - Node.js
 - npm
-- Windows with access to the target printers
+- Windows with target printers
 
 Commands:
 
 - `npm start`
 - `npm run pack`
 - `npm run dist:win`
-- `npm run sync`
 - `npm run release`
 - `npm run release:win`
 
-The generated Windows installer is written to `dist/PrintAssistantSetup.exe`.
-
-## Distribution notes
-
-- `node_modules/`, logs, caches, and local runtime data stay out of version control.
-- Release artifacts are distributed through GitHub Releases rather than committed into the repository.
-- Code signing material and secrets must never be committed.
-
-## License
-
-Apache License 2.0. See `LICENSE`.
+The generated installer is written to `dist/PrintAssistantSetup.exe`.

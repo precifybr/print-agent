@@ -1,4 +1,4 @@
-DALMAGO Print Agent build resources
+Print Assistant build resources
 
 This folder is reserved for production packaging assets.
 

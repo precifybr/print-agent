@@ -8,8 +8,10 @@
       :root {
         color-scheme: light;
         font-family: "Segoe UI", ui-sans-serif, system-ui, sans-serif;
-        background: #f6f7f4;
-        color: #20231f;
+        background:
+          radial-gradient(circle at top left, rgba(20, 117, 99, 0.2), transparent 32%),
+          linear-gradient(145deg, #f7fbf9 0%, #edf4f1 100%);
+        color: #14211d;
       }
 
       * {
@@ -19,558 +21,437 @@
       body {
         min-height: 100vh;
         margin: 0;
+        padding: 24px;
         display: grid;
         place-items: center;
-        padding: 28px;
-        background:
-          radial-gradient(circle at top left, rgba(215, 233, 205, 0.75), transparent 34%),
-          linear-gradient(145deg, #f8f8f4 0%, #eef2ea 100%);
       }
 
       main {
-        width: min(100%, 420px);
+        width: min(100%, 460px);
       }
 
       .app {
-        border: 1px solid rgba(42, 51, 38, 0.08);
-        border-radius: 18px;
-        padding: 30px;
-        background: rgba(255, 255, 252, 0.94);
-        box-shadow: 0 24px 70px rgba(36, 43, 34, 0.13);
+        padding: 28px;
+        border-radius: 24px;
+        background: rgba(255, 255, 255, 0.92);
+        border: 1px solid rgba(20, 33, 29, 0.08);
+        box-shadow: 0 24px 64px rgba(24, 48, 39, 0.12);
       }
 
       .header {
         display: grid;
-        gap: 18px;
-        justify-items: center;
-        margin-bottom: 30px;
-        text-align: center;
+        gap: 14px;
+        margin-bottom: 22px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
       }
 
       .logo {
-        width: 54px;
-        height: 54px;
+        width: 52px;
+        height: 52px;
+        border-radius: 16px;
         display: grid;
         place-items: center;
-        border-radius: 16px;
-        background: #1f2a1e;
+        background: #12372c;
         color: #fff;
-        font-size: 26px;
+        font-size: 24px;
         font-weight: 800;
       }
 
       h1 {
         margin: 0;
-        font-size: 25px;
-        font-weight: 750;
-        letter-spacing: 0;
+        font-size: 28px;
+      }
+
+      .subtitle {
+        margin: 0;
+        color: #5f6f68;
+        font-size: 14px;
       }
 
       .status {
-        display: inline-flex;
+        display: flex;
         align-items: center;
-        gap: 9px;
-        border-radius: 999px;
-        padding: 9px 14px;
-        background: #edf7ea;
-        color: #1f6d32;
-        font-size: 14px;
-        font-weight: 700;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 14px 16px;
+        border-radius: 18px;
+        background: #eff8f4;
+        color: #0f8b64;
       }
 
       .status[data-state="offline"] {
-        background: #fff0ed;
-        color: #b22b1f;
+        background: #fff3f1;
+        color: #c2412d;
+      }
+
+      .status-main {
+        display: flex;
+        align-items: center;
+        gap: 10px;
       }
 
       .status-dot {
-        width: 10px;
-        height: 10px;
+        width: 12px;
+        height: 12px;
         border-radius: 999px;
         background: currentColor;
-        box-shadow: 0 0 0 4px rgba(31, 109, 50, 0.12);
+        box-shadow: 0 0 0 5px rgba(15, 139, 100, 0.13);
       }
 
       .status[data-state="offline"] .status-dot {
-        box-shadow: 0 0 0 4px rgba(178, 43, 31, 0.12);
+        box-shadow: 0 0 0 5px rgba(194, 65, 45, 0.12);
       }
 
-      .ready-text {
-        margin: 10px 0 0;
-        color: #6a7166;
+      .status-title {
         font-size: 15px;
+        font-weight: 800;
       }
 
-      .form {
+      .status-copy {
+        margin: 2px 0 0;
+        font-size: 13px;
+        color: #60736b;
+      }
+
+      .status[data-state="offline"] .status-copy {
+        color: #93645c;
+      }
+
+      .version {
+        font-size: 12px;
+        font-weight: 700;
+        color: #60736b;
+      }
+
+      .card {
+        margin-top: 18px;
+        padding: 18px;
+        border-radius: 18px;
+        background: #f8fbf9;
+        border: 1px solid rgba(18, 55, 44, 0.08);
+      }
+
+      .card h2 {
+        margin: 0 0 12px;
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #6c7c75;
+      }
+
+      .printer-list {
         display: grid;
-        gap: 22px;
+        gap: 10px;
       }
 
-      .field {
-        display: grid;
-        gap: 9px;
+      .printer-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 14px;
+        border-radius: 14px;
+        background: #fff;
+        border: 1px solid rgba(18, 55, 44, 0.08);
       }
 
-      label {
-        color: #3c4239;
+      .printer-name {
         font-size: 14px;
         font-weight: 700;
       }
 
-      select {
-        width: 100%;
-        min-height: 48px;
-        border: 1px solid #d9ded3;
-        border-radius: 12px;
-        padding: 0 14px;
-        background: #fff;
-        color: #20231f;
-        font: inherit;
-        outline: none;
+      .printer-meta {
+        color: #6a7771;
+        font-size: 12px;
       }
 
-      select:focus {
-        border-color: #6b8f5d;
-        box-shadow: 0 0 0 4px rgba(107, 143, 93, 0.14);
-      }
-
-      .paper-options {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 8px;
-      }
-
-      .paper-option {
-        position: relative;
-      }
-
-      .paper-option input {
-        position: absolute;
-        opacity: 0;
-        pointer-events: none;
-      }
-
-      .paper-option span {
-        min-height: 44px;
-        display: grid;
-        place-items: center;
-        border: 1px solid #d9ded3;
-        border-radius: 12px;
-        background: #fff;
-        color: #3d4339;
-        cursor: pointer;
+      .empty {
+        margin: 0;
+        color: #6a7771;
         font-size: 14px;
-        font-weight: 750;
       }
 
-      .paper-option input:checked + span {
-        border-color: #243122;
-        background: #243122;
-        color: #fff;
+      .actions {
+        margin-top: 20px;
+        display: grid;
+        gap: 10px;
       }
 
       button {
         min-height: 48px;
         border: 0;
-        border-radius: 12px;
-        padding: 0 16px;
-        background: #243122;
-        color: #fff;
-        cursor: pointer;
+        border-radius: 14px;
         font: inherit;
-        font-weight: 750;
+        font-weight: 800;
+        cursor: pointer;
+        transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
       }
 
       button:hover {
-        background: #1b2419;
+        transform: translateY(-1px);
       }
 
       button:disabled {
         cursor: wait;
-        opacity: 0.62;
+        opacity: 0.65;
+        transform: none;
+      }
+
+      .primary {
+        background: #12372c;
+        color: #fff;
+        box-shadow: 0 10px 24px rgba(18, 55, 44, 0.18);
       }
 
       .secondary {
-        border: 1px solid #d9ded3;
-        background: #fff;
-        color: #384035;
+        background: #ebf3ef;
+        color: #21443a;
       }
 
-      .secondary:hover {
-        background: #f5f7f1;
-      }
-
-      .update-row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 12px;
-        padding-top: 6px;
-      }
-
-      .update-row button {
-        width: auto;
-        min-height: 38px;
-        padding: 0 12px;
-        border-radius: 10px;
-        font-size: 13px;
-      }
-
-      .quiet-result {
-        display: grid;
-        gap: 4px;
-        border-radius: 12px;
-        padding: 12px;
-        background: #f5f7f1;
-        color: #5d6658;
-        font-size: 13px;
-        line-height: 1.35;
-      }
-
-      .quiet-result strong {
-        color: #30372d;
-        font-size: 13px;
+      .quiet {
+        background: transparent;
+        color: #6b7872;
       }
 
       .message {
         min-height: 20px;
-        margin: 0;
-        color: #697066;
-        font-size: 14px;
-        line-height: 1.45;
+        margin: 16px 0 0;
         text-align: center;
+        color: #60736b;
+        font-size: 14px;
       }
 
       .message[data-state="success"] {
-        color: #1f6d32;
+        color: #0f8b64;
       }
 
       .message[data-state="error"] {
-        color: #b22b1f;
-      }
-
-      .hidden {
-        display: none;
+        color: #c2412d;
       }
     </style>
   </head>
   <body>
     <main>
-      <section class="app" aria-labelledby="appTitle">
+      <section class="app">
         <div class="header">
-          <div class="logo" aria-hidden="true">P</div>
-          <div>
-            <h1 id="appTitle">Print Assistant</h1>
-            <p class="ready-text" id="readyText">Pronto para imprimir</p>
-          </div>
-          <div class="status" id="assistantStatus" data-state="offline">
-            <span class="status-dot" aria-hidden="true"></span>
-            <span id="assistantStatusText">Offline</span>
-          </div>
-        </div>
-
-        <div class="form">
-          <div class="field">
-            <label for="printerSelect">Impressora padrao</label>
-            <select id="printerSelect">
-              <option value="">Procurando impressoras...</option>
-            </select>
-            <button class="secondary" id="refreshPrintersButton" type="button">Atualizar impressoras</button>
-          </div>
-
-          <div class="field">
-            <label>Tamanho do papel</label>
-            <div class="paper-options" role="radiogroup" aria-label="Tamanho do papel">
-              <label class="paper-option">
-                <input type="radio" name="paperSize" value="58mm" />
-                <span>58mm</span>
-              </label>
-              <label class="paper-option">
-                <input type="radio" name="paperSize" value="80mm" checked />
-                <span>80mm</span>
-              </label>
-              <label class="paper-option">
-                <input type="radio" name="paperSize" value="A4" />
-                <span>A4</span>
-              </label>
+          <div class="brand">
+            <div class="logo">P</div>
+            <div>
+              <h1>Print Assistant</h1>
+              <p class="subtitle">Local-first, automatico e pronto para imprimir.</p>
             </div>
           </div>
 
-          <button id="testPrintButton" type="button">Imprimir teste</button>
-
-          <div class="quiet-result" id="lastResult">
-            <strong>Ultima impressao</strong>
-            <span id="lastResultText">Nenhum teste executado.</span>
+          <div class="status" id="statusCard" data-state="offline">
+            <div class="status-main">
+              <span class="status-dot" aria-hidden="true"></span>
+              <div>
+                <div class="status-title" id="statusTitle">Offline</div>
+                <p class="status-copy" id="statusCopy">Aguardando conexao local.</p>
+              </div>
+            </div>
+            <span class="version" id="versionLabel">v-</span>
           </div>
-
-          <div class="update-row">
-            <button class="secondary" id="diagnosticButton" type="button">Diagnostico rapido</button>
-            <button class="secondary" id="checkUpdateButton" type="button">Verificar atualizacao</button>
-            <button id="installUpdateButton" class="hidden" type="button">Atualizar agora</button>
-          </div>
-
-          <p class="message" id="message" role="status" aria-live="polite"></p>
         </div>
+
+        <section class="card">
+          <h2>Impressoras detectadas</h2>
+          <div class="printer-list" id="printerList"></div>
+          <p class="empty" id="emptyState">Procurando impressoras...</p>
+        </section>
+
+        <div class="actions">
+          <button class="primary" id="testButton" type="button">Teste rapido</button>
+          <button class="secondary" id="updateButton" type="button">Verificar atualizacao</button>
+          <button class="secondary" id="installButton" type="button" hidden>Instalar atualizacao</button>
+          <button class="quiet" id="quitButton" type="button">Sair</button>
+        </div>
+
+        <p class="message" id="message" role="status" aria-live="polite"></p>
       </section>
     </main>
 
-    <script type="module">
-      const DEFAULT_PAPER_SIZE = "80mm";
-
-      const assistantStatus = document.getElementById("assistantStatus");
-      const assistantStatusText = document.getElementById("assistantStatusText");
-      const readyText = document.getElementById("readyText");
-      const printerSelect = document.getElementById("printerSelect");
-      const refreshPrintersButton = document.getElementById("refreshPrintersButton");
-      const testPrintButton = document.getElementById("testPrintButton");
-      const diagnosticButton = document.getElementById("diagnosticButton");
-      const checkUpdateButton = document.getElementById("checkUpdateButton");
-      const installUpdateButton = document.getElementById("installUpdateButton");
-      const lastResultText = document.getElementById("lastResultText");
+    <script>
+      const statusCard = document.getElementById("statusCard");
+      const statusTitle = document.getElementById("statusTitle");
+      const statusCopy = document.getElementById("statusCopy");
+      const versionLabel = document.getElementById("versionLabel");
+      const printerList = document.getElementById("printerList");
+      const emptyState = document.getElementById("emptyState");
+      const testButton = document.getElementById("testButton");
+      const updateButton = document.getElementById("updateButton");
+      const installButton = document.getElementById("installButton");
+      const quitButton = document.getElementById("quitButton");
       const message = document.getElementById("message");
 
-      const state = {
-        printers: [],
-        settings: {
-          preferredPrinter: "",
-          paperSize: DEFAULT_PAPER_SIZE,
-        },
-      };
+      let refreshTimer = null;
+      let latestStatus = null;
+
+      function setMessage(text = "", state = "info") {
+        message.textContent = text;
+        message.dataset.state = state;
+      }
 
       function setOnline(isOnline) {
-        assistantStatus.dataset.state = isOnline ? "online" : "offline";
-        assistantStatusText.textContent = isOnline ? "Online" : "Offline";
-        readyText.textContent = isOnline ? "Pronto para imprimir" : "Abra o Print Assistant novamente";
+        statusCard.dataset.state = isOnline ? "online" : "offline";
+        statusTitle.textContent = isOnline ? "Online" : "Offline";
+        statusCopy.textContent = isOnline
+          ? "O app esta pronto para receber pedidos locais."
+          : "Abra o Print Assistant para voltar a imprimir.";
       }
 
-      function setMessage(text = "", status = "info") {
-        message.textContent = text;
-        message.dataset.state = status;
-      }
+      function renderPrinters(printers = []) {
+        printerList.innerHTML = "";
 
-      function getSelectedPaperSize() {
-        return document.querySelector('input[name="paperSize"]:checked')?.value || DEFAULT_PAPER_SIZE;
-      }
-
-      function setPaperSize(value) {
-        const paperSize = ["58mm", "80mm", "A4"].includes(value) ? value : DEFAULT_PAPER_SIZE;
-        const option = document.querySelector(`input[name="paperSize"][value="${paperSize}"]`);
-
-        if (option) {
-          option.checked = true;
-        }
-      }
-
-      function renderPrinters() {
-        if (!state.printers.length) {
-          printerSelect.innerHTML = '<option value="">Nenhuma impressora encontrada</option>';
-          printerSelect.disabled = true;
-          testPrintButton.disabled = true;
+        if (!printers.length) {
+          emptyState.hidden = false;
+          emptyState.textContent = "Nenhuma impressora encontrada no Windows.";
+          testButton.disabled = true;
           return;
         }
 
-        printerSelect.disabled = false;
-        testPrintButton.disabled = false;
-        printerSelect.innerHTML = state.printers
-          .map((printer) => {
-            const name = escapeHtml(printer.name);
-            const label = escapeHtml(printer.displayName || printer.name);
-            return `<option value="${name}">${label}</option>`;
-          })
-          .join("");
+        emptyState.hidden = true;
+        testButton.disabled = false;
 
-        const preferredPrinter = state.settings.preferredPrinter;
-        const defaultPrinter = state.printers.find((printer) => printer.isDefault);
-        const selectedPrinter = state.printers.find((printer) => printer.name === preferredPrinter)
-          || (state.printers.length === 1 ? state.printers[0] : defaultPrinter)
-          || state.printers[0];
+        for (const printer of printers) {
+          const item = document.createElement("div");
+          item.className = "printer-item";
 
-        printerSelect.value = selectedPrinter.name;
-        saveSettings({ preferredPrinter: selectedPrinter.name });
-      }
+          const info = document.createElement("div");
+          const name = document.createElement("div");
+          const meta = document.createElement("div");
+          name.className = "printer-name";
+          meta.className = "printer-meta";
+          name.textContent = printer.displayName || printer.name;
+          meta.textContent = printer.isDefault ? "Padrao do Windows" : "Disponivel";
+          info.append(name, meta);
 
-      async function refreshPrinters() {
-        refreshPrintersButton.disabled = true;
-        setMessage("Atualizando impressoras...");
+          const paper = document.createElement("div");
+          paper.className = "printer-meta";
+          paper.textContent = suggestPaperSize(printer.name);
 
-        try {
-          const status = await window.printAgent.getLocalBridgeStatus();
-          state.printers = Array.isArray(status.printers) ? status.printers : [];
-          state.settings = {
-            ...state.settings,
-            ...(status.settings || {}),
-          };
-          setPaperSize(state.settings.paperSize);
-          renderPrinters();
-          setOnline(true);
-          renderLastPrint(status.diagnostics?.lastPrintDiagnostic);
-          setMessage(state.printers.length ? "" : "Instale uma impressora no Windows para continuar.", state.printers.length ? "info" : "error");
-          updateInstallButton(status.diagnostics?.update);
-        } catch {
-          state.printers = [];
-          renderPrinters();
-          setOnline(false);
-          setMessage("Print Assistant offline.", "error");
-        } finally {
-          refreshPrintersButton.disabled = false;
+          item.append(info, paper);
+          printerList.append(item);
         }
       }
 
-      async function saveSettings(nextSettings) {
-        state.settings = {
-          ...state.settings,
-          ...nextSettings,
-        };
+      function suggestPaperSize(printerName = "") {
+        const value = String(printerName).toLowerCase();
 
-        try {
-          await window.printAgent.updateLocalSettings({
-            preferredPrinter: state.settings.preferredPrinter,
-            paperSize: state.settings.paperSize,
-          });
-        } catch {
-          setMessage("Nao foi possivel salvar a preferencia.", "error");
-        }
-      }
-
-      async function printTest() {
-        if (!printerSelect.value) {
-          setMessage("Escolha uma impressora.", "error");
-          return;
-        }
-
-        testPrintButton.disabled = true;
-        setMessage("Enviando teste...");
-
-        try {
-          await window.printAgent.printLocal({
-            printer: printerSelect.value,
-            paperSize: getSelectedPaperSize(),
-            text: "Teste de impressao\nPrint Assistant",
-          });
-          lastResultText.textContent = "Teste enviado. Verifique se saiu na impressora.";
-          setMessage("Teste enviado para a impressora.", "success");
-        } catch {
-          await refreshLastPrintLog();
-          setMessage("Nao foi possivel imprimir o teste.", "error");
-        } finally {
-          testPrintButton.disabled = false;
-        }
-      }
-
-      async function runQuickDiagnostic() {
-        if (!printerSelect.value) {
-          setMessage("Escolha uma impressora.", "error");
-          return;
-        }
-
-        diagnosticButton.disabled = true;
-        setMessage("Executando diagnostico...");
-
-        try {
-          const result = await window.printAgent.printRawTest({
-            printer: printerSelect.value,
-          });
-          renderLastPrint(result.trace);
-          setMessage("Diagnostico enviado para a impressora.", "success");
-        } catch {
-          await refreshLastPrintLog();
-          setMessage("Diagnostico encontrou uma falha.", "error");
-        } finally {
-          diagnosticButton.disabled = false;
-        }
-      }
-
-      async function refreshLastPrintLog() {
-        try {
-          const log = await window.printAgent.getLastPrintLog();
-          renderLastPrint(log?.lastJob);
-        } catch {
-          lastResultText.textContent = "Nao foi possivel ler o ultimo diagnostico.";
-        }
-      }
-
-      function renderLastPrint(trace) {
-        if (!trace) {
-          lastResultText.textContent = "Nenhum teste executado.";
-          return;
-        }
-
-        if (trace.status === "success") {
-          lastResultText.textContent = "Concluida.";
-          return;
-        }
-
-        if (trace.status === "failure") {
-          const reason = trace.error?.message || trace.callback?.failureReason || "Falha na impressao.";
-          lastResultText.textContent = `Ultimo erro: ${reason}`;
-          return;
-        }
-
-        lastResultText.textContent = "Teste aceito.";
-      }
-
-      async function checkForUpdates() {
-        checkUpdateButton.disabled = true;
-        setMessage("Verificando atualizacao...");
-
-        try {
-          const result = await window.printAgent.checkForUpdates();
-
-          if (result?.downloaded || result?.available) {
-            updateInstallButton(result);
-            setMessage("Nova versao disponivel.", "success");
-            return;
-          }
-
-          setMessage("Voce ja esta na versao mais recente.", "success");
-        } catch {
-          setMessage("Nao foi possivel verificar agora.", "error");
-        } finally {
-          checkUpdateButton.disabled = false;
-        }
+        if (value.includes("58")) return "58mm";
+        if (value.includes("80")) return "80mm";
+        return "A4/local";
       }
 
       function updateInstallButton(update) {
-        const canInstall = Boolean(update?.downloaded);
-        installUpdateButton.classList.toggle("hidden", !canInstall);
+        installButton.hidden = !Boolean(update && update.downloaded);
       }
 
-      async function installUpdate() {
-        setMessage("Atualizando...");
-
+      async function refreshStatus(showErrors = false) {
         try {
-          await window.printAgent.installUpdate();
-        } catch {
-          setMessage("Atualizacao indisponivel agora.", "error");
+          const status = await window.printAssistant.getStatus();
+          latestStatus = status;
+          setOnline(Boolean(status.online));
+          versionLabel.textContent = `v${status.version || "-"}`;
+          renderPrinters(Array.isArray(status.printers) ? status.printers : []);
+          updateInstallButton(status.diagnostics && status.diagnostics.update);
+
+          if (!status.printers || !status.printers.length) {
+            setMessage("Instale ao menos uma impressora no Windows.", "error");
+          } else if (showErrors) {
+            setMessage("", "info");
+          }
+        } catch (error) {
+          latestStatus = null;
+          setOnline(false);
+          renderPrinters([]);
+          updateInstallButton(null);
+
+          if (showErrors) {
+            setMessage("Nao foi possivel acessar o localhost do Print Assistant.", "error");
+          }
         }
       }
 
-      function escapeHtml(value) {
-        return String(value ?? "")
-          .replaceAll("&", "&amp;")
-          .replaceAll("<", "&lt;")
-          .replaceAll(">", "&gt;")
-          .replaceAll('"', "&quot;")
-          .replaceAll("'", "&#39;");
+      async function runTest() {
+        testButton.disabled = true;
+        setMessage("Enviando teste para a impressora...", "info");
+
+        try {
+          await window.printAssistant.printTest({});
+          setMessage("Teste enviado com sucesso.", "success");
+          await refreshStatus(false);
+        } catch {
+          setMessage("O teste falhou. Verifique a impressora e tente novamente.", "error");
+        } finally {
+          testButton.disabled = false;
+        }
       }
 
-      printerSelect.addEventListener("change", () => {
-        saveSettings({ preferredPrinter: printerSelect.value });
+      async function checkUpdates() {
+        updateButton.disabled = true;
+        setMessage("Verificando atualizacao...", "info");
+
+        try {
+          const result = await window.printAssistant.checkForUpdates();
+          updateInstallButton(result);
+          setMessage(
+            result && (result.downloaded || result.available)
+              ? "Nova versao encontrada."
+              : "Voce ja esta na versao mais recente.",
+            "success",
+          );
+        } catch {
+          setMessage("Nao foi possivel verificar atualizacoes agora.", "error");
+        } finally {
+          updateButton.disabled = false;
+        }
+      }
+
+      async function installUpdate() {
+        installButton.disabled = true;
+        setMessage("Preparando atualizacao...", "info");
+
+        try {
+          await window.printAssistant.installUpdate();
+        } catch {
+          setMessage("A instalacao da atualizacao nao esta disponivel agora.", "error");
+          installButton.disabled = false;
+        }
+      }
+
+      async function quitApp() {
+        quitButton.disabled = true;
+        setMessage("Encerrando o Print Assistant...", "info");
+
+        try {
+          await window.printAssistant.quit();
+        } catch {
+          setMessage("Nao foi possivel encerrar agora.", "error");
+          quitButton.disabled = false;
+        }
+      }
+
+      testButton.addEventListener("click", runTest);
+      updateButton.addEventListener("click", checkUpdates);
+      installButton.addEventListener("click", installUpdate);
+      quitButton.addEventListener("click", quitApp);
+
+      refreshStatus(true);
+      refreshTimer = setInterval(() => {
+        refreshStatus(false);
+      }, 5000);
+
+      window.addEventListener("beforeunload", () => {
+        if (refreshTimer) {
+          clearInterval(refreshTimer);
+        }
       });
-
-      document.querySelectorAll('input[name="paperSize"]').forEach((input) => {
-        input.addEventListener("change", () => {
-          saveSettings({ paperSize: getSelectedPaperSize() });
-        });
-      });
-
-      refreshPrintersButton.addEventListener("click", refreshPrinters);
-      testPrintButton.addEventListener("click", printTest);
-      diagnosticButton.addEventListener("click", runQuickDiagnostic);
-      checkUpdateButton.addEventListener("click", checkForUpdates);
-      installUpdateButton.addEventListener("click", installUpdate);
-
-      refreshPrinters();
     </script>
   </body>
 </html>
